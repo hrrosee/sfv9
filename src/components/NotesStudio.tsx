@@ -3730,6 +3730,12 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                             }
                           }
 
+                          // If user was selecting text (not just clicking), do NOT switch to write mode!
+                          const currentSel = window.getSelection();
+                          if (currentSel && !currentSel.isCollapsed && (currentSel.toString() || '').trim().length > 0) {
+                            return;
+                          }
+
                           pendingCaretTargetInfoRef.current = {
                             childIndex,
                             charOffset,
