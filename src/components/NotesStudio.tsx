@@ -439,7 +439,7 @@ export interface NotesStudioProps {
   onToggleSidebar?: () => void;
 }
 
-export const NotesStudio: React.FC<NotesStudioProps> = ({
+const NotesStudioComponent: React.FC<NotesStudioProps> = ({
   notes,
   setNotes,
   workspaces,
@@ -743,6 +743,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
   const activeNote = useMemo(() => {
     return notes.find(n => n.id === activeNoteId) || null;
   }, [notes, activeNoteId]);
+
+  // Memoize rendered HTML for preview mode so DOM is NEVER re-created unless note content actually changes
+  const activeNotePreviewHtml = useMemo(() => {
+    if (!activeNote?.content || !activeNote.content.trim()) {
+      return '<div class="py-16 text-center text-slate-400 font-sans text-xs flex flex-col items-center justify-center gap-2 select-none empty-note-prompt cursor-pointer"><p class="font-semibold text-slate-600">Note is empty</p><p class="text-[11.5px] text-slate-400">Click here to write...</p></div>';
+    }
+    return convertMarkdownToHtml(activeNote.content);
+  }, [activeNote?.content]);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -2467,7 +2475,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="flex-1 flex flex-col h-full bg-[#F8FAFC] dark:bg-[#0B0F19] overflow-hidden select-none"
+      className="flex-1 flex flex-col h-full bg-[#F8FAFC] dark:bg-[#0B0F19] overflow-hidden"
     >
       {/* Top Header Bar (Mobile only: hamburger & compact title) */}
       <div className={`md:hidden shrink-0 h-[56px] bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 px-4 items-center justify-between z-10 select-none ${
@@ -3656,14 +3664,8 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text"
                     >
                       <div
-                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
+                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 select-text"
                         onClick={(e) => {
-                          // Check if user is selecting text (do not switch to write mode if selection exists)
-                          const curSel = window.getSelection();
-                          if (curSel && curSel.toString().trim().length > 0) {
-                            return;
-                          }
-
                           const target = e.target as HTMLElement;
                           const checkItem = target.closest('.checklist-item');
                           if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
@@ -3691,16 +3693,12 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                             if (href) window.open(href, '_blank', 'noopener,noreferrer');
                             return;
                           }
-
-                          // If clicked on an empty note placeholder, switch to write mode
-                          if (target.closest('.empty-note-prompt') || !activeNote.content || !activeNote.content.trim()) {
+                          if (target.closest('.empty-note-prompt')) {
                             setNoteEditorMode('write');
-                            return;
                           }
                         }}
                         dangerouslySetInnerHTML={{
-                          __html: convertMarkdownToHtml(activeNote.content || '') ||
-                            '<div class="py-16 text-center text-slate-400 font-sans text-xs flex flex-col items-center justify-center gap-2 select-none empty-note-prompt cursor-pointer"><p class="font-semibold text-slate-600">Note is empty</p><p class="text-[11.5px] text-slate-400">Click to start typing...</p></div>'
+                          __html: activeNotePreviewHtml
                         }}
                       />
                     </div>
@@ -4275,4 +4273,6 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     </motion.div>
   );
 };
+
+export const NotesStudio = React.memo(NotesStudioComponent);
 export default NotesStudio;
