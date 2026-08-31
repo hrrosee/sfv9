@@ -3073,6 +3073,20 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       <Pin className={`w-3.5 h-3.5 ${activeNote.isPinned ? 'fill-rose-500 text-rose-500' : ''}`} />
                     </button>
 
+                    {/* Edit Note Button in Preview Mode */}
+                    {noteEditorMode === 'preview' && (
+                      <button
+                        type="button"
+                        onClick={() => setNoteEditorMode('write')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#2563EB] hover:bg-blue-600 active:scale-95 text-white font-medium text-xs shadow-3xs transition-all cursor-pointer mr-1"
+                        data-tooltip="Edit note"
+                        data-tooltip-side="bottom"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                    )}
+
                     {/* Copy Button (Shows green check and feedback when copied, matching note list) */}
                     <button
                       type="button"
@@ -3639,13 +3653,17 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     </div>
                   ) : (
                     <div
-                      onClick={() => setNoteEditorMode('write')}
-                      className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 cursor-text font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text"
-                      title="Tap anywhere to edit note"
+                      className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text"
                     >
                       <div
                         className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
                         onClick={(e) => {
+                          // Check if user is selecting text (do not switch to write mode if selection exists)
+                          const curSel = window.getSelection();
+                          if (curSel && curSel.toString().trim().length > 0) {
+                            return;
+                          }
+
                           const target = e.target as HTMLElement;
                           const checkItem = target.closest('.checklist-item');
                           if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
@@ -3674,78 +3692,15 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                             return;
                           }
 
-                          // Calculate childIndex and charOffset within the container
-                          const container = e.currentTarget as HTMLElement;
-                          let childIndex = 0;
-                          let charOffset = 0;
-
-                          const selection = window.getSelection();
-                          let clickNode: Node | null = null;
-                          let clickOffset = 0;
-
-                          if (document.caretPositionFromPoint) {
-                            const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
-                            if (pos) {
-                              clickNode = pos.offsetNode;
-                              clickOffset = pos.offset;
-                            }
-                          } else if ((document as any).caretRangeFromPoint) {
-                            const range = (document as any).caretRangeFromPoint(e.clientX, e.clientY);
-                            if (range) {
-                              clickNode = range.startContainer;
-                              clickOffset = range.startOffset;
-                            }
-                          }
-
-                          if (clickNode && container.contains(clickNode)) {
-                            // Find which top-level child contains clickNode
-                            let topChild: Node | null = clickNode;
-                            while (topChild && topChild.parentNode !== container) {
-                              topChild = topChild.parentNode;
-                            }
-                            if (topChild) {
-                              childIndex = Array.prototype.indexOf.call(container.children, topChild);
-                              if (childIndex < 0) childIndex = 0;
-
-                              // Count characters up to clickNode
-                              let accumulated = 0;
-                              let stop = false;
-                              const countWalk = (node: Node) => {
-                                if (stop) return;
-                                if (node === clickNode) {
-                                  accumulated += clickOffset;
-                                  stop = true;
-                                  return;
-                                }
-                                if (node.nodeType === Node.TEXT_NODE) {
-                                  accumulated += node.textContent?.length || 0;
-                                } else {
-                                  for (let i = 0; i < node.childNodes.length; i++) {
-                                    countWalk(node.childNodes[i]);
-                                  }
-                                }
-                              };
-                              countWalk(topChild);
-                              charOffset = accumulated;
-                            }
-                          }
-
-                          // If user was selecting text (not just clicking), do NOT switch to write mode!
-                          const currentSel = window.getSelection();
-                          if (currentSel && !currentSel.isCollapsed && (currentSel.toString() || '').trim().length > 0) {
+                          // If clicked on an empty note placeholder, switch to write mode
+                          if (target.closest('.empty-note-prompt') || !activeNote.content || !activeNote.content.trim()) {
+                            setNoteEditorMode('write');
                             return;
                           }
-
-                          pendingCaretTargetInfoRef.current = {
-                            childIndex,
-                            charOffset,
-                            fallbackCoords: { clientX: e.clientX, clientY: e.clientY }
-                          };
-                          setNoteEditorMode('write');
                         }}
                         dangerouslySetInnerHTML={{
                           __html: convertMarkdownToHtml(activeNote.content || '') ||
-                            '<div class="py-16 text-center text-slate-400 font-sans text-xs flex flex-col items-center justify-center gap-2 select-none"><p class="font-semibold text-slate-600">Note is empty</p><p class="text-[11.5px] text-slate-400">Tap anywhere to start typing...</p></div>'
+                            '<div class="py-16 text-center text-slate-400 font-sans text-xs flex flex-col items-center justify-center gap-2 select-none empty-note-prompt cursor-pointer"><p class="font-semibold text-slate-600">Note is empty</p><p class="text-[11.5px] text-slate-400">Click to start typing...</p></div>'
                         }}
                       />
                     </div>
