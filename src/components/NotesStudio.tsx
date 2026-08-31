@@ -234,7 +234,7 @@ export function autoLinkifyText(text: string): string {
   );
 }
 
-export type HighlightColor = 'yellow' | 'orange' | 'green' | 'pink';
+export type HighlightColor = 'yellow' | 'green' | 'cyan' | 'magenta';
 
 export const HIGHLIGHT_COLORS: {
   id: HighlightColor;
@@ -245,31 +245,31 @@ export const HIGHLIGHT_COLORS: {
 }[] = [
   {
     id: 'yellow',
-    label: 'Soft Yellow',
-    bgHex: '#FFF176',
-    pillColor: 'bg-[#FFF176]',
-    markClass: 'bg-[#FFF176] dark:bg-[#FFF176]/30 text-slate-900 dark:text-yellow-100 font-medium py-0.5 rounded-[2px]',
-  },
-  {
-    id: 'orange',
-    label: 'Soft Orange',
-    bgHex: '#FFCC80',
-    pillColor: 'bg-[#FFCC80]',
-    markClass: 'bg-[#FFCC80] dark:bg-[#FFCC80]/30 text-slate-900 dark:text-orange-100 font-medium py-0.5 rounded-[2px]',
+    label: 'Yellow',
+    bgHex: '#FFFF00',
+    pillColor: 'bg-[#FFFF00]',
+    markClass: 'bg-[#FFFF00] text-slate-900 font-medium py-0.5 rounded-[2px]',
   },
   {
     id: 'green',
-    label: 'Soft Green',
-    bgHex: '#86EFAC',
-    pillColor: 'bg-[#86EFAC]',
-    markClass: 'bg-[#86EFAC] dark:bg-[#86EFAC]/30 text-slate-900 dark:text-emerald-100 font-medium py-0.5 rounded-[2px]',
+    label: 'Green',
+    bgHex: '#00FF00',
+    pillColor: 'bg-[#00FF00]',
+    markClass: 'bg-[#00FF00] text-slate-900 font-medium py-0.5 rounded-[2px]',
   },
   {
-    id: 'pink',
-    label: 'Rose Pink',
-    bgHex: '#FDA4AF',
-    pillColor: 'bg-[#FDA4AF]',
-    markClass: 'bg-[#FDA4AF] dark:bg-[#FDA4AF]/30 text-slate-900 dark:text-rose-100 font-medium py-0.5 rounded-[2px]',
+    id: 'cyan',
+    label: 'Cyan',
+    bgHex: '#00FFFF',
+    pillColor: 'bg-[#00FFFF]',
+    markClass: 'bg-[#00FFFF] text-slate-900 font-medium py-0.5 rounded-[2px]',
+  },
+  {
+    id: 'magenta',
+    label: 'Magenta',
+    bgHex: '#FF00FF',
+    pillColor: 'bg-[#FF00FF]',
+    markClass: 'bg-[#FF00FF] text-slate-900 font-medium py-0.5 rounded-[2px]',
   },
 ];
 
@@ -405,7 +405,7 @@ function formatInlineMarkdownToHtml(text: string): string {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[#2563EB] dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 font-medium cursor-pointer">${title || url}</a>`;
     })
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-[#FFF176] dark:bg-[#FFF176]/30 text-slate-900 dark:text-yellow-100 font-medium py-0.5 rounded-[2px]" style="background-color: #FFF176;">$1</mark>')
+    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-[#FFFF00] text-slate-900 font-medium py-0.5 rounded-[2px]" style="background-color: #FFFF00;">$1</mark>')
     .replace(/~~(.*?)~~/g, '<del class="text-slate-400">$1</del>')
     .replace(/\*(.*?)\*/g, '<i>$1</i>')
     .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 text-xs font-mono bg-slate-100 text-rose-600 rounded border border-slate-200/70">$1</code>');
@@ -3235,7 +3235,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                             className="w-3.5 h-[3px] rounded-xs mt-[1px] shrink-0 shadow-3xs"
                             style={{
                               backgroundColor:
-                                HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.bgHex || '#FFF176',
+                                HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.bgHex || '#FFFF00',
                             }}
                           />
                         </div>
