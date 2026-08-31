@@ -244,40 +244,161 @@ export const HIGHLIGHT_COLORS: {
 }[] = [
   {
     id: 'yellow',
-    label: 'Yellow',
-    bgHex: '#FEF08A',
-    pillColor: 'bg-yellow-400',
-    markClass: 'bg-yellow-200/90 dark:bg-yellow-400/35 text-yellow-950 dark:text-yellow-100 px-1 py-0.5 rounded shadow-3xs',
+    label: 'Neon Yellow',
+    bgHex: '#FFE600', // Chrome Ctrl+F Match Yellow
+    pillColor: 'bg-[#FFE600]',
+    markClass: 'bg-[#FFE600] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs',
   },
   {
     id: 'orange',
-    label: 'Orange',
-    bgHex: '#FED7AA',
-    pillColor: 'bg-orange-400',
-    markClass: 'bg-orange-200/90 dark:bg-orange-400/35 text-orange-950 dark:text-orange-100 px-1 py-0.5 rounded shadow-3xs',
+    label: 'Vibrant Orange',
+    bgHex: '#FF9632', // Chrome Ctrl+F Active Match Orange
+    pillColor: 'bg-[#FF9632]',
+    markClass: 'bg-[#FF9632] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs',
   },
   {
     id: 'blue',
-    label: 'Blue',
-    bgHex: '#BFDBFE',
-    pillColor: 'bg-blue-400',
-    markClass: 'bg-blue-200/90 dark:bg-blue-400/35 text-blue-950 dark:text-blue-100 px-1 py-0.5 rounded shadow-3xs',
+    label: 'Luminous Blue',
+    bgHex: '#67E8F9', // Fluorescent cyan/sky blue
+    pillColor: 'bg-[#67E8F9]',
+    markClass: 'bg-[#67E8F9] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs',
   },
   {
     id: 'green',
-    label: 'Green',
-    bgHex: '#BBF7D0',
-    pillColor: 'bg-emerald-400',
-    markClass: 'bg-emerald-200/90 dark:bg-emerald-400/35 text-emerald-950 dark:text-emerald-100 px-1 py-0.5 rounded shadow-3xs',
+    label: 'Neon Green',
+    bgHex: '#86EFAC', // Fluorescent lime green
+    pillColor: 'bg-[#86EFAC]',
+    markClass: 'bg-[#86EFAC] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs',
   },
   {
     id: 'pink',
-    label: 'Pink (Rose)',
-    bgHex: '#FECDD3',
-    pillColor: 'bg-rose-400',
-    markClass: 'bg-rose-200/90 dark:bg-rose-400/35 text-rose-950 dark:text-rose-100 px-1 py-0.5 rounded shadow-3xs',
+    label: 'Neon Pink',
+    bgHex: '#FDA4AF', // Fluorescent highlighter pink
+    pillColor: 'bg-[#FDA4AF]',
+    markClass: 'bg-[#FDA4AF] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs',
   },
 ];
+
+function applyHighlightToRange(targetColor: HighlightColor | 'none'): void {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+
+  const range = selection.getRangeAt(0);
+  if (range.collapsed) return;
+
+  const colorObj = HIGHLIGHT_COLORS.find(c => c.id === targetColor) || HIGHLIGHT_COLORS[0];
+
+  // 1. Single Text Node Selection
+  if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = range.startContainer as Text;
+    const parentMark = textNode.parentElement?.closest('mark') as HTMLElement | null;
+
+    if (targetColor === 'none') {
+      if (parentMark) {
+        const parent = parentMark.parentNode;
+        while (parentMark.firstChild) {
+          parent?.insertBefore(parentMark.firstChild, parentMark);
+        }
+        parentMark.remove();
+      }
+      return;
+    }
+
+    if (parentMark && parentMark.contains(textNode)) {
+      parentMark.setAttribute('data-highlight', colorObj.id);
+      parentMark.className = colorObj.markClass;
+      return;
+    }
+
+    let middleNode = textNode;
+    if (range.endOffset < textNode.length) {
+      textNode.splitText(range.endOffset);
+    }
+    if (range.startOffset > 0) {
+      middleNode = textNode.splitText(range.startOffset);
+    }
+
+    const mark = document.createElement('mark');
+    mark.setAttribute('data-highlight', colorObj.id);
+    mark.className = colorObj.markClass;
+    middleNode.parentNode?.replaceChild(mark, middleNode);
+    mark.appendChild(middleNode);
+
+    const newRange = document.createRange();
+    newRange.selectNodeContents(mark);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+    return;
+  }
+
+  // 2. Multi-node selection across elements / paragraphs
+  const root = range.commonAncestorContainer;
+  const walker = document.createTreeWalker(
+    root.nodeType === Node.TEXT_NODE ? root.parentElement || root : root,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) => {
+        if (range.intersectsNode(node)) {
+          return NodeFilter.FILTER_ACCEPT;
+        }
+        return NodeFilter.FILTER_REJECT;
+      },
+    }
+  );
+
+  const textNodes: { node: Text; start: number; end: number }[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    let start = 0;
+    let end = node.length;
+
+    if (node === range.startContainer) {
+      start = range.startOffset;
+    }
+    if (node === range.endContainer) {
+      end = range.endOffset;
+    }
+
+    if (start < end && node.textContent && node.textContent.trim().length > 0) {
+      textNodes.push({ node, start, end });
+    }
+  }
+
+  textNodes.forEach(({ node, start, end }) => {
+    const parentMark = node.parentElement?.closest('mark') as HTMLElement | null;
+
+    if (targetColor === 'none') {
+      if (parentMark) {
+        const parent = parentMark.parentNode;
+        while (parentMark.firstChild) {
+          parent?.insertBefore(parentMark.firstChild, parentMark);
+        }
+        parentMark.remove();
+      }
+      return;
+    }
+
+    if (parentMark) {
+      parentMark.setAttribute('data-highlight', colorObj.id);
+      parentMark.className = colorObj.markClass;
+      return;
+    }
+
+    let middle = node;
+    if (end < node.length) {
+      node.splitText(end);
+    }
+    if (start > 0) {
+      middle = node.splitText(start);
+    }
+
+    const mark = document.createElement('mark');
+    mark.setAttribute('data-highlight', colorObj.id);
+    mark.className = colorObj.markClass;
+    middle.parentNode?.replaceChild(mark, middle);
+    mark.appendChild(middle);
+  });
+}
 
 function formatInlineMarkdownToHtml(text: string): string {
   if (!text) return '';
@@ -287,7 +408,7 @@ function formatInlineMarkdownToHtml(text: string): string {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[#2563EB] dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 font-medium cursor-pointer">${title || url}</a>`;
     })
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-yellow-200/90 dark:bg-yellow-400/35 text-yellow-950 dark:text-yellow-100 px-1 py-0.5 rounded shadow-3xs">$1</mark>')
+    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-[#FFE600] text-[#0F172A] font-semibold px-1 py-0.5 rounded-[3px] shadow-3xs">$1</mark>')
     .replace(/~~(.*?)~~/g, '<del class="text-slate-400">$1</del>')
     .replace(/\*(.*?)\*/g, '<i>$1</i>')
     .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 text-xs font-mono bg-slate-100 text-rose-600 rounded border border-slate-200/70">$1</code>');
@@ -1148,16 +1269,10 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     scheduleDebouncedSave();
   };
 
-  const executeHighlight = (color?: HighlightColor) => {
+  const executeHighlight = (color?: HighlightColor | 'none') => {
     if (!editorContentRef.current) return;
     editorContentRef.current.focus();
     const selection = window.getSelection();
-
-    const targetColor = color || activeHighlightColor || 'yellow';
-    if (color) {
-      setActiveHighlightColor(color);
-      setIsHighlightPickerOpen(false);
-    }
 
     // Restore saved selection range if present
     if (savedSelectionRangeRef.current && selection && (!selection.rangeCount || selection.isCollapsed)) {
@@ -1167,32 +1282,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
 
     if (!selection || selection.rangeCount === 0) return;
 
-    const range = selection.getRangeAt(0);
-    const parentMark = range.commonAncestorContainer.parentElement?.closest('mark');
-    const colorObj = HIGHLIGHT_COLORS.find(c => c.id === targetColor) || HIGHLIGHT_COLORS[0];
-
-    if (parentMark) {
-      if (!color || parentMark.getAttribute('data-highlight') === targetColor) {
-        // Toggle OFF if clicking same highlight
-        const text = parentMark.textContent || '';
-        const textNode = document.createTextNode(text);
-        parentMark.parentNode?.replaceChild(textNode, parentMark);
-      } else {
-        // Switch to new highlight color
-        parentMark.setAttribute('data-highlight', colorObj.id);
-        parentMark.className = colorObj.markClass;
-      }
-    } else if (!range.collapsed) {
-      const mark = document.createElement('mark');
-      mark.setAttribute('data-highlight', colorObj.id);
-      mark.className = colorObj.markClass;
-      try {
-        range.surroundContents(mark);
-      } catch {
-        const selectedContent = range.extractContents();
-        mark.appendChild(selectedContent);
-        range.insertNode(mark);
-      }
+    if (color === 'none') {
+      applyHighlightToRange('none');
+      setIsHighlightPickerOpen(false);
+    } else {
+      const targetColor = color || activeHighlightColor || 'yellow';
+      setActiveHighlightColor(targetColor);
+      setIsHighlightPickerOpen(false);
+      applyHighlightToRange(targetColor);
     }
 
     savedSelectionRangeRef.current = null;
@@ -3062,21 +3159,16 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        const sel = window.getSelection();
-                        if (!sel || sel.isCollapsed) {
-                          if (isHighlightPickerOpen) {
-                            setIsHighlightPickerOpen(false);
-                            setHighlightAnchor(null);
-                          } else {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setHighlightAnchor({
-                              top: rect.bottom + 6,
-                              left: Math.max(12, rect.left - 20),
-                            });
-                            setIsHighlightPickerOpen(true);
-                          }
+                        if (isHighlightPickerOpen) {
+                          setIsHighlightPickerOpen(false);
+                          setHighlightAnchor(null);
                         } else {
-                          executeHighlight();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHighlightAnchor({
+                            top: rect.bottom + 6,
+                            left: Math.max(12, rect.left - 20),
+                          });
+                          setIsHighlightPickerOpen(true);
                         }
                       }}
                       className={`p-1.5 rounded transition-all cursor-pointer flex flex-col items-center justify-center relative ${
@@ -3451,7 +3543,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                         onMouseUp={updateToolbarState}
                         onSelect={updateToolbarState}
                         onKeyDown={handleEditorKeyDown}
-                        className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-amber-100 dark:[&_mark]:bg-amber-900/60 [&_mark]:text-amber-950 dark:[&_mark]:text-amber-200 [&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
+                        className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-[#FFE600] [&_mark]:text-[#0F172A] [&_mark]:font-semibold [&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded-[3px] [&_mark]:shadow-3xs [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
                       />
                     </div>
                   ) : (
@@ -3461,7 +3553,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       title="Tap anywhere to edit note"
                     >
                       <div
-                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-amber-100 dark:[&_mark]:bg-amber-900/60 [&_mark]:text-amber-950 dark:[&_mark]:text-amber-200 [&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
+                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-[#FFE600] [&_mark]:text-[#0F172A] [&_mark]:font-semibold [&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded-[3px] [&_mark]:shadow-3xs [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
                         onClick={(e) => {
                           const target = e.target as HTMLElement;
                           const checkItem = target.closest('.checklist-item');
@@ -3870,14 +3962,24 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => executeHighlight('yellow')}
-                className="mt-0.5 w-full text-center py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              >
-                Reset to Yellow
-              </button>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeHighlight('none')}
+                  className="flex-1 text-center py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition-colors cursor-pointer"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => executeHighlight('yellow')}
+                  className="flex-1 text-center py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                >
+                  Yellow
+                </button>
+              </div>
             </motion.div>
           </>
         )}
