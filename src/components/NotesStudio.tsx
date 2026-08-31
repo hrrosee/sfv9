@@ -479,7 +479,6 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
   const recordHistorySnapshot = (force = false) => {
     if (isHistoryNavigatingRef.current || !editorContentRef.current) return;
     const currentHtml = editorContentRef.current.innerHTML;
-    const now = Date.now();
 
     if (currentHtml === lastSnapshotHtmlRef.current && !force) return;
 
@@ -489,16 +488,11 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       caretOffset,
     };
 
-    if (!force && now - lastSnapshotTimeRef.current < 500 && undoStackRef.current.length > 0) {
-      undoStackRef.current[undoStackRef.current.length - 1] = snapshot;
-    } else {
-      undoStackRef.current.push(snapshot);
-      if (undoStackRef.current.length > 80) {
-        undoStackRef.current.shift();
-      }
+    undoStackRef.current.push(snapshot);
+    if (undoStackRef.current.length > 200) {
+      undoStackRef.current.shift();
     }
 
-    lastSnapshotTimeRef.current = now;
     lastSnapshotHtmlRef.current = currentHtml;
     if (force) {
       redoStackRef.current = [];
@@ -513,11 +507,13 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       const currentHtml = editorContentRef.current.innerHTML;
       const currentCaret = getEditorCaretOffset(editorContentRef.current);
 
+      // Save current state into redo stack
       redoStackRef.current.push({
         html: currentHtml,
         caretOffset: currentCaret,
       });
 
+      // Pop exactly 1 step
       let target = undoStackRef.current.pop();
       if (target && target.html === currentHtml && undoStackRef.current.length > 0) {
         target = undoStackRef.current.pop();
@@ -528,9 +524,10 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
         lastHtmlRef.current = target.html;
         lastSnapshotHtmlRef.current = target.html;
 
+        const targetOffset = target.caretOffset;
         setTimeout(() => {
           if (editorContentRef.current) {
-            setEditorCaretOffset(editorContentRef.current, target.caretOffset);
+            setEditorCaretOffset(editorContentRef.current, targetOffset);
             updateToolbarState();
             scheduleDebouncedSave();
           }
@@ -549,20 +546,23 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       const currentHtml = editorContentRef.current.innerHTML;
       const currentCaret = getEditorCaretOffset(editorContentRef.current);
 
+      // Save current state into undo stack
       undoStackRef.current.push({
         html: currentHtml,
         caretOffset: currentCaret,
       });
 
+      // Pop exactly 1 step
       const target = redoStackRef.current.pop();
       if (target) {
         editorContentRef.current.innerHTML = target.html;
         lastHtmlRef.current = target.html;
         lastSnapshotHtmlRef.current = target.html;
 
+        const targetOffset = target.caretOffset;
         setTimeout(() => {
           if (editorContentRef.current) {
-            setEditorCaretOffset(editorContentRef.current, target.caretOffset);
+            setEditorCaretOffset(editorContentRef.current, targetOffset);
             updateToolbarState();
             scheduleDebouncedSave();
           }
