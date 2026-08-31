@@ -233,6 +233,52 @@ export function autoLinkifyText(text: string): string {
   );
 }
 
+export type HighlightColor = 'yellow' | 'orange' | 'blue' | 'green' | 'pink';
+
+export const HIGHLIGHT_COLORS: {
+  id: HighlightColor;
+  label: string;
+  bgHex: string;
+  pillColor: string;
+  markClass: string;
+}[] = [
+  {
+    id: 'yellow',
+    label: 'Yellow',
+    bgHex: '#FEF08A',
+    pillColor: 'bg-yellow-400',
+    markClass: 'bg-yellow-200/90 dark:bg-yellow-400/35 text-yellow-950 dark:text-yellow-100 px-1 py-0.5 rounded shadow-3xs',
+  },
+  {
+    id: 'orange',
+    label: 'Orange',
+    bgHex: '#FED7AA',
+    pillColor: 'bg-orange-400',
+    markClass: 'bg-orange-200/90 dark:bg-orange-400/35 text-orange-950 dark:text-orange-100 px-1 py-0.5 rounded shadow-3xs',
+  },
+  {
+    id: 'blue',
+    label: 'Blue',
+    bgHex: '#BFDBFE',
+    pillColor: 'bg-blue-400',
+    markClass: 'bg-blue-200/90 dark:bg-blue-400/35 text-blue-950 dark:text-blue-100 px-1 py-0.5 rounded shadow-3xs',
+  },
+  {
+    id: 'green',
+    label: 'Green',
+    bgHex: '#BBF7D0',
+    pillColor: 'bg-emerald-400',
+    markClass: 'bg-emerald-200/90 dark:bg-emerald-400/35 text-emerald-950 dark:text-emerald-100 px-1 py-0.5 rounded shadow-3xs',
+  },
+  {
+    id: 'pink',
+    label: 'Pink (Rose)',
+    bgHex: '#FECDD3',
+    pillColor: 'bg-rose-400',
+    markClass: 'bg-rose-200/90 dark:bg-rose-400/35 text-rose-950 dark:text-rose-100 px-1 py-0.5 rounded shadow-3xs',
+  },
+];
+
 function formatInlineMarkdownToHtml(text: string): string {
   if (!text) return '';
   const convertedMarkdown = text
@@ -241,7 +287,7 @@ function formatInlineMarkdownToHtml(text: string): string {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[#2563EB] dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 font-medium cursor-pointer">${title || url}</a>`;
     })
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-    .replace(/==(.*?ches|.*?)==/g, '<mark class="bg-amber-100 text-amber-950 px-1 py-0.5 rounded">$1</mark>')
+    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-yellow-200/90 dark:bg-yellow-400/35 text-yellow-950 dark:text-yellow-100 px-1 py-0.5 rounded shadow-3xs">$1</mark>')
     .replace(/~~(.*?)~~/g, '<del class="text-slate-400">$1</del>')
     .replace(/\*(.*?)\*/g, '<i>$1</i>')
     .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 text-xs font-mono bg-slate-100 text-rose-600 rounded border border-slate-200/70">$1</code>');
@@ -350,6 +396,9 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
   const [isTextColorPickerOpen, setIsTextColorPickerOpen] = useState<boolean>(false);
   const [textColorAnchor, setTextColorAnchor] = useState<{ top: number; left: number } | null>(null);
   const [activeTextColor, setActiveTextColor] = useState<string>('#0F172A');
+  const [isHighlightPickerOpen, setIsHighlightPickerOpen] = useState<boolean>(false);
+  const [highlightAnchor, setHighlightAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [activeHighlightColor, setActiveHighlightColor] = useState<HighlightColor>('yellow');
   const savedSelectionRangeRef = useRef<Range | null>(null);
 
   const [noteEditorMode, setNoteEditorMode] = useState<'write' | 'preview'>('preview');
@@ -1099,30 +1148,54 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     scheduleDebouncedSave();
   };
 
-  const executeHighlight = () => {
+  const executeHighlight = (color?: HighlightColor) => {
     if (!editorContentRef.current) return;
     editorContentRef.current.focus();
     const selection = window.getSelection();
+
+    const targetColor = color || activeHighlightColor || 'yellow';
+    if (color) {
+      setActiveHighlightColor(color);
+      setIsHighlightPickerOpen(false);
+    }
+
+    // Restore saved selection range if present
+    if (savedSelectionRangeRef.current && selection && (!selection.rangeCount || selection.isCollapsed)) {
+      selection.removeAllRanges();
+      selection.addRange(savedSelectionRangeRef.current);
+    }
+
     if (!selection || selection.rangeCount === 0) return;
 
     const range = selection.getRangeAt(0);
     const parentMark = range.commonAncestorContainer.parentElement?.closest('mark');
+    const colorObj = HIGHLIGHT_COLORS.find(c => c.id === targetColor) || HIGHLIGHT_COLORS[0];
 
     if (parentMark) {
-      const text = parentMark.textContent || '';
-      const textNode = document.createTextNode(text);
-      parentMark.parentNode?.replaceChild(textNode, parentMark);
+      if (!color || parentMark.getAttribute('data-highlight') === targetColor) {
+        // Toggle OFF if clicking same highlight
+        const text = parentMark.textContent || '';
+        const textNode = document.createTextNode(text);
+        parentMark.parentNode?.replaceChild(textNode, parentMark);
+      } else {
+        // Switch to new highlight color
+        parentMark.setAttribute('data-highlight', colorObj.id);
+        parentMark.className = colorObj.markClass;
+      }
     } else if (!range.collapsed) {
       const mark = document.createElement('mark');
-      mark.className = 'bg-amber-100 text-amber-950 px-1 py-0.5 rounded';
+      mark.setAttribute('data-highlight', colorObj.id);
+      mark.className = colorObj.markClass;
       try {
         range.surroundContents(mark);
       } catch {
-        document.execCommand('hiliteColor', false, '#fef08a');
+        const selectedContent = range.extractContents();
+        mark.appendChild(selectedContent);
+        range.insertNode(mark);
       }
-    } else {
-      document.execCommand('hiliteColor', false, '#fef08a');
     }
+
+    savedSelectionRangeRef.current = null;
     updateToolbarState();
     recordHistorySnapshot(true);
     scheduleDebouncedSave();
@@ -2011,8 +2084,10 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       range.setEnd(anchorNode, offset);
       range.deleteContents();
 
+      const colorObj = HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor) || HIGHLIGHT_COLORS[0];
       const mark = document.createElement('mark');
-      mark.className = 'bg-amber-100 text-amber-950 px-1 py-0.5 rounded';
+      mark.setAttribute('data-highlight', colorObj.id);
+      mark.className = colorObj.markClass;
       mark.textContent = innerText;
       range.insertNode(mark);
 
@@ -2973,22 +3048,55 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       <Strikethrough className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* Highlighter */}
+                    {/* Highlighter with Color Picker Trigger */}
                     <button
                       type="button"
                       onPointerDown={(e) => e.preventDefault()}
                       onTouchStart={(e) => e.preventDefault()}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={executeHighlight}
-                      className={`p-1.5 rounded transition-all cursor-pointer ${
-                        activeFormats.highlight
-                          ? 'bg-amber-200 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200 font-bold shadow-3xs ring-1 ring-amber-400'
-                          : 'text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 hover:text-amber-950 dark:hover:text-white'
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0) {
+                          savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+                        }
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const sel = window.getSelection();
+                        if (!sel || sel.isCollapsed) {
+                          if (isHighlightPickerOpen) {
+                            setIsHighlightPickerOpen(false);
+                            setHighlightAnchor(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setHighlightAnchor({
+                              top: rect.bottom + 6,
+                              left: Math.max(12, rect.left - 20),
+                            });
+                            setIsHighlightPickerOpen(true);
+                          }
+                        } else {
+                          executeHighlight();
+                        }
+                      }}
+                      className={`p-1.5 rounded transition-all cursor-pointer flex flex-col items-center justify-center relative ${
+                        activeFormats.highlight || isHighlightPickerOpen
+                          ? 'bg-yellow-100 dark:bg-yellow-950/60 text-yellow-950 dark:text-yellow-200 font-bold shadow-3xs ring-1 ring-yellow-400'
+                          : 'text-amber-700 dark:text-amber-300 hover:bg-yellow-100/70 dark:hover:bg-yellow-900/30 hover:text-amber-950 dark:hover:text-white'
                       }`}
-                      data-tooltip="Highlighter (Ctrl+Shift+H)"
+                      data-tooltip="Highlighter (Yellow, Orange, Blue, Green, Pink)"
                       data-tooltip-side="bottom"
                     >
-                      <Highlighter className="w-3.5 h-3.5" />
+                      <div className="flex flex-col items-center justify-center leading-none select-none">
+                        <Highlighter className="w-3.5 h-3.5" />
+                        <span
+                          className="w-3.5 h-[2px] rounded-xs mt-[1px] shrink-0 shadow-3xs"
+                          style={{
+                            backgroundColor:
+                              HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.bgHex || '#FEF08A',
+                          }}
+                        />
+                      </div>
                     </button>
 
                     {/* Text Color Picker Trigger */}
@@ -3707,6 +3815,68 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                 className="mt-0.5 w-full text-center py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
               >
                 Reset to Default
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Highlight Color Picker Popover (Fixed, Never Clipped by Toolbar) */}
+      <AnimatePresence>
+        {isHighlightPickerOpen && highlightAnchor && (
+          <>
+            <div
+              className="fixed inset-0 z-[1000] bg-transparent"
+              onClick={() => {
+                setIsHighlightPickerOpen(false);
+                setHighlightAnchor(null);
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: -4 }}
+              transition={{ duration: 0.12, ease: 'easeOut' }}
+              style={{
+                position: 'fixed',
+                top: highlightAnchor.top,
+                left: highlightAnchor.left,
+                zIndex: 1001,
+              }}
+              onClick={e => e.stopPropagation()}
+              className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200/95 dark:border-slate-800 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[170px] select-none"
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-0.5">
+                Highlight Color
+              </span>
+              <div className="grid grid-cols-5 gap-1.5">
+                {HIGHLIGHT_COLORS.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => executeHighlight(item.id)}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
+                      activeHighlightColor === item.id
+                        ? 'scale-110 border-slate-900 dark:border-white shadow-xs ring-2 ring-yellow-400/50'
+                        : 'border-slate-200/80 dark:border-slate-700 hover:scale-105 shadow-3xs'
+                    }`}
+                    style={{ backgroundColor: item.bgHex }}
+                    title={item.label}
+                  >
+                    {activeHighlightColor === item.id && (
+                      <Check className="w-3.5 h-3.5 text-slate-900 stroke-[3]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => executeHighlight('yellow')}
+                className="mt-0.5 w-full text-center py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+              >
+                Reset to Yellow
               </button>
             </motion.div>
           </>
