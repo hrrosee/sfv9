@@ -2940,9 +2940,9 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
 
         {/* RIGHT: Editor Canvas Column */}
         <motion.div
-          key={`notes-editor-col-${isMobileNoteEditing ? (activeNote?.id || 'editing') : 'idle'}`}
-          initial={{ opacity: 0, x: 14 }}
-          animate={{ opacity: 1, x: 0 }}
+          key="notes-editor-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className={`flex-1 min-h-0 bg-[#F8FAFC] dark:bg-[#0B0F19] flex flex-col overflow-hidden ${!isMobileNoteEditing ? 'hidden md:flex' : 'flex'}`}
         >
@@ -4274,5 +4274,11 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
   );
 };
 
-export const NotesStudio = React.memo(NotesStudioComponent);
+export const NotesStudio = React.memo(NotesStudioComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.notes === nextProps.notes &&
+    prevProps.workspaces === nextProps.workspaces &&
+    prevProps.activeWorkspaceId === nextProps.activeWorkspaceId
+  );
+});
 export default NotesStudio;
