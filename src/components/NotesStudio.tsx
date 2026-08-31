@@ -36,6 +36,7 @@ import {
   Loader2,
   Wand2,
   Menu,
+  ChevronDown,
 } from 'lucide-react';
 
 export interface StudyNote {
@@ -233,7 +234,7 @@ export function autoLinkifyText(text: string): string {
   );
 }
 
-export type HighlightColor = 'yellow' | 'orange' | 'blue' | 'green' | 'pink';
+export type HighlightColor = 'yellow' | 'orange' | 'green' | 'pink';
 
 export const HIGHLIGHT_COLORS: {
   id: HighlightColor;
@@ -245,37 +246,30 @@ export const HIGHLIGHT_COLORS: {
   {
     id: 'yellow',
     label: 'Soft Yellow',
-    bgHex: '#FEF08A',
-    pillColor: 'bg-[#FEF08A]',
-    markClass: 'bg-[#FEF08A] dark:bg-yellow-400/35 text-slate-900 dark:text-yellow-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs',
+    bgHex: '#FFF176',
+    pillColor: 'bg-[#FFF176]',
+    markClass: 'bg-[#FFF176] dark:bg-[#FFF176]/30 text-slate-900 dark:text-yellow-100 font-medium py-0.5 rounded-[2px]',
   },
   {
     id: 'orange',
     label: 'Soft Orange',
-    bgHex: '#FED7AA',
-    pillColor: 'bg-[#FED7AA]',
-    markClass: 'bg-[#FED7AA] dark:bg-orange-400/35 text-slate-900 dark:text-orange-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs',
-  },
-  {
-    id: 'blue',
-    label: 'Soft Blue',
-    bgHex: '#BAE6FD',
-    pillColor: 'bg-[#BAE6FD]',
-    markClass: 'bg-[#BAE6FD] dark:bg-sky-400/35 text-slate-900 dark:text-sky-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs',
+    bgHex: '#FFCC80',
+    pillColor: 'bg-[#FFCC80]',
+    markClass: 'bg-[#FFCC80] dark:bg-[#FFCC80]/30 text-slate-900 dark:text-orange-100 font-medium py-0.5 rounded-[2px]',
   },
   {
     id: 'green',
     label: 'Soft Green',
-    bgHex: '#BBF7D0',
-    pillColor: 'bg-[#BBF7D0]',
-    markClass: 'bg-[#BBF7D0] dark:bg-emerald-400/35 text-slate-900 dark:text-emerald-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs',
+    bgHex: '#86EFAC',
+    pillColor: 'bg-[#86EFAC]',
+    markClass: 'bg-[#86EFAC] dark:bg-[#86EFAC]/30 text-slate-900 dark:text-emerald-100 font-medium py-0.5 rounded-[2px]',
   },
   {
     id: 'pink',
-    label: 'Soft Pink',
-    bgHex: '#FECDD3',
-    pillColor: 'bg-[#FECDD3]',
-    markClass: 'bg-[#FECDD3] dark:bg-rose-400/35 text-slate-900 dark:text-rose-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs',
+    label: 'Rose Pink',
+    bgHex: '#FDA4AF',
+    pillColor: 'bg-[#FDA4AF]',
+    markClass: 'bg-[#FDA4AF] dark:bg-[#FDA4AF]/30 text-slate-900 dark:text-rose-100 font-medium py-0.5 rounded-[2px]',
   },
 ];
 
@@ -321,6 +315,7 @@ function applyHighlightToRange(targetColor: HighlightColor | 'none'): void {
     const mark = document.createElement('mark');
     mark.setAttribute('data-highlight', colorObj.id);
     mark.className = colorObj.markClass;
+    mark.style.backgroundColor = colorObj.bgHex;
     middleNode.parentNode?.replaceChild(mark, middleNode);
     mark.appendChild(middleNode);
 
@@ -381,6 +376,7 @@ function applyHighlightToRange(targetColor: HighlightColor | 'none'): void {
     if (parentMark) {
       parentMark.setAttribute('data-highlight', colorObj.id);
       parentMark.className = colorObj.markClass;
+      parentMark.style.backgroundColor = colorObj.bgHex;
       return;
     }
 
@@ -395,6 +391,7 @@ function applyHighlightToRange(targetColor: HighlightColor | 'none'): void {
     const mark = document.createElement('mark');
     mark.setAttribute('data-highlight', colorObj.id);
     mark.className = colorObj.markClass;
+    mark.style.backgroundColor = colorObj.bgHex;
     middle.parentNode?.replaceChild(mark, middle);
     mark.appendChild(middle);
   });
@@ -408,7 +405,7 @@ function formatInlineMarkdownToHtml(text: string): string {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-[#2563EB] dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 font-medium cursor-pointer">${title || url}</a>`;
     })
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-[#FEF08A] dark:bg-yellow-400/35 text-slate-900 dark:text-yellow-100 font-medium px-1.5 py-0.5 rounded-[4px] shadow-3xs">$1</mark>')
+    .replace(/==(.*?ches|.*?)==/g, '<mark data-highlight="yellow" class="bg-[#FFF176] dark:bg-[#FFF176]/30 text-slate-900 dark:text-yellow-100 font-medium py-0.5 rounded-[2px]" style="background-color: #FFF176;">$1</mark>')
     .replace(/~~(.*?)~~/g, '<del class="text-slate-400">$1</del>')
     .replace(/\*(.*?)\*/g, '<i>$1</i>')
     .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 text-xs font-mono bg-slate-100 text-rose-600 rounded border border-slate-200/70">$1</code>');
@@ -1296,6 +1293,70 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     updateToolbarState();
     recordHistorySnapshot(true);
     scheduleDebouncedSave();
+  };
+
+  const handleMainHighlightClick = () => {
+    if (!editorContentRef.current) return;
+    editorContentRef.current.focus();
+    const selection = window.getSelection();
+
+    if (savedSelectionRangeRef.current && selection && (!selection.rangeCount || selection.isCollapsed)) {
+      selection.removeAllRanges();
+      selection.addRange(savedSelectionRangeRef.current);
+    }
+
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      // Toggle highlighter active state when collapsed
+      setActiveFormats(prev => ({ ...prev, highlight: !prev.highlight }));
+      return;
+    }
+
+    // Check if selection is already highlighted
+    const range = selection.getRangeAt(0);
+    const root = range.commonAncestorContainer;
+    const parentMark = (root.nodeType === Node.TEXT_NODE ? root.parentElement : (root as HTMLElement))?.closest('mark');
+
+    let hasHighlight = !!parentMark;
+    if (!hasHighlight && root.nodeType === Node.ELEMENT_NODE) {
+      const el = root as HTMLElement;
+      hasHighlight = Array.from(el.querySelectorAll('mark')).some(m => range.intersectsNode(m));
+    }
+
+    if (hasHighlight) {
+      // MS Word toggle: clicking highlighted text removes highlight!
+      applyHighlightToRange('none');
+    } else {
+      // MS Word toggle: clicking unhighlighted text highlights with active color!
+      applyHighlightToRange(activeHighlightColor);
+    }
+
+    savedSelectionRangeRef.current = null;
+    updateToolbarState();
+    recordHistorySnapshot(true);
+    scheduleDebouncedSave();
+  };
+
+  const handleSelectHighlightColor = (color: HighlightColor) => {
+    setActiveHighlightColor(color);
+    setIsHighlightPickerOpen(false);
+    setHighlightAnchor(null);
+
+    if (!editorContentRef.current) return;
+    editorContentRef.current.focus();
+    const selection = window.getSelection();
+
+    if (savedSelectionRangeRef.current && selection && (!selection.rangeCount || selection.isCollapsed)) {
+      selection.removeAllRanges();
+      selection.addRange(savedSelectionRangeRef.current);
+    }
+
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+      applyHighlightToRange(color);
+      savedSelectionRangeRef.current = null;
+      updateToolbarState();
+      recordHistorySnapshot(true);
+      scheduleDebouncedSave();
+    }
   };
 
   const executeTextColor = (color: string) => {
@@ -3145,51 +3206,81 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       <Strikethrough className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* Highlighter with Color Picker Trigger */}
-                    <button
-                      type="button"
-                      onPointerDown={(e) => e.preventDefault()}
-                      onTouchStart={(e) => e.preventDefault()}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const sel = window.getSelection();
-                        if (sel && sel.rangeCount > 0) {
-                          savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isHighlightPickerOpen) {
-                          setIsHighlightPickerOpen(false);
-                          setHighlightAnchor(null);
-                        } else {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setHighlightAnchor({
-                            top: rect.bottom + 6,
-                            left: Math.max(12, rect.left - 20),
-                          });
-                          setIsHighlightPickerOpen(true);
-                        }
-                      }}
-                      className={`p-1.5 rounded transition-all cursor-pointer flex flex-col items-center justify-center relative ${
-                        activeFormats.highlight || isHighlightPickerOpen
-                          ? 'bg-yellow-100 dark:bg-yellow-950/60 text-yellow-950 dark:text-yellow-200 font-bold shadow-3xs ring-1 ring-yellow-400'
-                          : 'text-amber-700 dark:text-amber-300 hover:bg-yellow-100/70 dark:hover:bg-yellow-900/30 hover:text-amber-950 dark:hover:text-white'
-                      }`}
-                      data-tooltip="Highlighter (Yellow, Orange, Blue, Green, Pink)"
-                      data-tooltip-side="bottom"
-                    >
-                      <div className="flex flex-col items-center justify-center leading-none select-none">
-                        <Highlighter className="w-3.5 h-3.5" />
-                        <span
-                          className="w-3.5 h-[2px] rounded-xs mt-[1px] shrink-0 shadow-3xs"
-                          style={{
-                            backgroundColor:
-                              HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.bgHex || '#FEF08A',
-                          }}
-                        />
-                      </div>
-                    </button>
+                    {/* MS Word-Style Split Highlighter Button */}
+                    <div className="flex items-center rounded-md border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50 p-0.5 shadow-3xs">
+                      {/* Left Action Button: Pen Icon + Active Color Bar */}
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onTouchStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const sel = window.getSelection();
+                          if (sel && sel.rangeCount > 0) {
+                            savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+                          }
+                        }}
+                        onClick={handleMainHighlightClick}
+                        className={`px-1.5 py-1 rounded transition-all cursor-pointer flex flex-col items-center justify-center relative ${
+                          activeFormats.highlight
+                            ? 'bg-yellow-100/90 dark:bg-yellow-950/60 text-slate-900 dark:text-yellow-200 font-bold shadow-3xs'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700/50 hover:text-slate-950 dark:hover:text-white'
+                        }`}
+                        data-tooltip={`Highlight / Remove (${HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.label || 'Yellow'})`}
+                        data-tooltip-side="bottom"
+                      >
+                        <div className="flex flex-col items-center justify-center leading-none select-none">
+                          <Highlighter className="w-3.5 h-3.5" />
+                          <span
+                            className="w-3.5 h-[3px] rounded-xs mt-[1px] shrink-0 shadow-3xs"
+                            style={{
+                              backgroundColor:
+                                HIGHLIGHT_COLORS.find(c => c.id === activeHighlightColor)?.bgHex || '#FFF176',
+                            }}
+                          />
+                        </div>
+                      </button>
+
+                      {/* Subtle Vertical Divider */}
+                      <div className="w-[1px] h-3.5 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                      {/* Right Arrow: Opens 4-Color Palette Dropdown */}
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.preventDefault()}
+                        onTouchStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const sel = window.getSelection();
+                          if (sel && sel.rangeCount > 0) {
+                            savedSelectionRangeRef.current = sel.getRangeAt(0).cloneRange();
+                          }
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isHighlightPickerOpen) {
+                            setIsHighlightPickerOpen(false);
+                            setHighlightAnchor(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setHighlightAnchor({
+                              top: rect.bottom + 6,
+                              left: Math.max(12, rect.left - 40),
+                            });
+                            setIsHighlightPickerOpen(true);
+                          }
+                        }}
+                        className={`p-1 rounded transition-all cursor-pointer flex items-center justify-center ${
+                          isHighlightPickerOpen
+                            ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-700/50 hover:text-slate-800 dark:hover:text-white'
+                        }`}
+                        data-tooltip="Highlight Color Palette"
+                        data-tooltip-side="bottom"
+                      >
+                        <ChevronDown className="w-2.5 h-2.5 stroke-[2.5]" />
+                      </button>
+                    </div>
 
                     {/* Text Color Picker Trigger */}
                     <button
@@ -3543,7 +3634,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                         onMouseUp={updateToolbarState}
                         onSelect={updateToolbarState}
                         onKeyDown={handleEditorKeyDown}
-                        className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-[#FEF08A] dark:[&_mark]:bg-yellow-400/35 [&_mark]:text-slate-900 dark:[&_mark]:text-yellow-100 [&_mark]:font-medium [&_mark]:px-1.5 [&_mark]:py-0.5 [&_mark]:rounded-[4px] [&_mark]:shadow-3xs [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
+                        className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
                       />
                     </div>
                   ) : (
@@ -3553,7 +3644,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       title="Tap anywhere to edit note"
                     >
                       <div
-                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:bg-[#FEF08A] dark:[&_mark]:bg-yellow-400/35 [&_mark]:text-slate-900 dark:[&_mark]:text-yellow-100 [&_mark]:font-medium [&_mark]:px-1.5 [&_mark]:py-0.5 [&_mark]:rounded-[4px] [&_mark]:shadow-3xs [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
+                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
                         onClick={(e) => {
                           const target = e.target as HTMLElement;
                           const checkItem = target.closest('.checklist-item');
@@ -3936,18 +4027,18 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                 zIndex: 1001,
               }}
               onClick={e => e.stopPropagation()}
-              className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200/95 dark:border-slate-800 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[170px] select-none"
+              className="p-2 bg-white dark:bg-slate-900 border border-slate-200/95 dark:border-slate-800 rounded-xl shadow-2xl flex flex-col gap-1.5 min-w-[145px] select-none"
             >
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-0.5">
                 Highlight Color
               </span>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5">
                 {HIGHLIGHT_COLORS.map(item => (
                   <button
                     key={item.id}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => executeHighlight(item.id)}
+                    onClick={() => handleSelectHighlightColor(item.id)}
                     className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border ${
                       activeHighlightColor === item.id
                         ? 'scale-110 border-slate-900 dark:border-white shadow-xs ring-2 ring-yellow-400/50'
@@ -3961,24 +4052,6 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     )}
                   </button>
                 ))}
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeHighlight('none')}
-                  className="flex-1 text-center py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition-colors cursor-pointer"
-                >
-                  Remove
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => executeHighlight('yellow')}
-                  className="flex-1 text-center py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-                >
-                  Yellow
-                </button>
               </div>
             </motion.div>
           </>
