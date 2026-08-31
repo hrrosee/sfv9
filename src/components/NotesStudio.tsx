@@ -395,6 +395,184 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
   const activeNoteRef = useRef<StudyNote | null>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
 
+  // Snapshot History Stack for 100% Reliable Undo / Redo & Caret Restoration
+  interface EditorHistorySnapshot {
+    html: string;
+    caretOffset: number;
+  }
+  const undoStackRef = useRef<EditorHistorySnapshot[]>([]);
+  const redoStackRef = useRef<EditorHistorySnapshot[]>([]);
+  const isHistoryNavigatingRef = useRef<boolean>(false);
+  const lastSnapshotTimeRef = useRef<number>(0);
+  const lastSnapshotHtmlRef = useRef<string>('');
+
+  const getEditorCaretOffset = (editorEl: HTMLElement): number => {
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return 0;
+      const range = sel.getRangeAt(0);
+      const preCaretRange = range.cloneRange();
+      preCaretRange.selectNodeContents(editorEl);
+      preCaretRange.setEnd(range.startContainer, range.startOffset);
+      return preCaretRange.toString().length;
+    } catch {
+      return 0;
+    }
+  };
+
+  const setEditorCaretOffset = (editorEl: HTMLElement, targetOffset: number): void => {
+    try {
+      editorEl.focus();
+      const sel = window.getSelection();
+      if (!sel) return;
+
+      let charCount = 0;
+      let targetNode: Node | null = null;
+      let nodeOffset = 0;
+      let lastNode: Node | null = null;
+
+      const findTarget = (node: Node): boolean => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          lastNode = node;
+          const textLen = node.textContent?.length || 0;
+          if (charCount + textLen >= targetOffset) {
+            targetNode = node;
+            nodeOffset = Math.max(0, targetOffset - charCount);
+            return true;
+          }
+          charCount += textLen;
+        } else {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            if (findTarget(node.childNodes[i])) return true;
+          }
+        }
+        return false;
+      };
+
+      findTarget(editorEl);
+
+      const range = document.createRange();
+      if (targetNode) {
+        range.setStart(targetNode, Math.min(nodeOffset, (targetNode.textContent?.length || 0)));
+      } else if (lastNode) {
+        range.setStart(lastNode, lastNode.textContent?.length || 0);
+      } else {
+        range.selectNodeContents(editorEl);
+      }
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {
+      try {
+        const sel = window.getSelection();
+        if (sel) {
+          const range = document.createRange();
+          range.selectNodeContents(editorEl);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } catch {}
+    }
+  };
+
+  const recordHistorySnapshot = (force = false) => {
+    if (isHistoryNavigatingRef.current || !editorContentRef.current) return;
+    const currentHtml = editorContentRef.current.innerHTML;
+    const now = Date.now();
+
+    if (currentHtml === lastSnapshotHtmlRef.current && !force) return;
+
+    const caretOffset = getEditorCaretOffset(editorContentRef.current);
+    const snapshot: EditorHistorySnapshot = {
+      html: currentHtml,
+      caretOffset,
+    };
+
+    if (!force && now - lastSnapshotTimeRef.current < 500 && undoStackRef.current.length > 0) {
+      undoStackRef.current[undoStackRef.current.length - 1] = snapshot;
+    } else {
+      undoStackRef.current.push(snapshot);
+      if (undoStackRef.current.length > 80) {
+        undoStackRef.current.shift();
+      }
+    }
+
+    lastSnapshotTimeRef.current = now;
+    lastSnapshotHtmlRef.current = currentHtml;
+    if (force) {
+      redoStackRef.current = [];
+    }
+  };
+
+  const executeUndo = () => {
+    if (!editorContentRef.current || undoStackRef.current.length === 0) return;
+
+    isHistoryNavigatingRef.current = true;
+    try {
+      const currentHtml = editorContentRef.current.innerHTML;
+      const currentCaret = getEditorCaretOffset(editorContentRef.current);
+
+      redoStackRef.current.push({
+        html: currentHtml,
+        caretOffset: currentCaret,
+      });
+
+      let target = undoStackRef.current.pop();
+      if (target && target.html === currentHtml && undoStackRef.current.length > 0) {
+        target = undoStackRef.current.pop();
+      }
+
+      if (target) {
+        editorContentRef.current.innerHTML = target.html;
+        lastHtmlRef.current = target.html;
+        lastSnapshotHtmlRef.current = target.html;
+
+        setTimeout(() => {
+          if (editorContentRef.current) {
+            setEditorCaretOffset(editorContentRef.current, target.caretOffset);
+            updateToolbarState();
+            scheduleDebouncedSave();
+          }
+        }, 0);
+      }
+    } finally {
+      isHistoryNavigatingRef.current = false;
+    }
+  };
+
+  const executeRedo = () => {
+    if (!editorContentRef.current || redoStackRef.current.length === 0) return;
+
+    isHistoryNavigatingRef.current = true;
+    try {
+      const currentHtml = editorContentRef.current.innerHTML;
+      const currentCaret = getEditorCaretOffset(editorContentRef.current);
+
+      undoStackRef.current.push({
+        html: currentHtml,
+        caretOffset: currentCaret,
+      });
+
+      const target = redoStackRef.current.pop();
+      if (target) {
+        editorContentRef.current.innerHTML = target.html;
+        lastHtmlRef.current = target.html;
+        lastSnapshotHtmlRef.current = target.html;
+
+        setTimeout(() => {
+          if (editorContentRef.current) {
+            setEditorCaretOffset(editorContentRef.current, target.caretOffset);
+            updateToolbarState();
+            scheduleDebouncedSave();
+          }
+        }, 0);
+      }
+    } finally {
+      isHistoryNavigatingRef.current = false;
+    }
+  };
+
   const activeNote = useMemo(() => {
     return notes.find(n => n.id === activeNoteId) || null;
   }, [notes, activeNoteId]);
@@ -907,6 +1085,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     }
 
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -916,6 +1095,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     editorContentRef.current.focus();
     document.execCommand(cmd, false, val);
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -944,6 +1124,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       document.execCommand('hiliteColor', false, '#fef08a');
     }
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -970,6 +1151,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
 
     savedSelectionRangeRef.current = null;
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -1004,6 +1186,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       document.execCommand('insertHTML', false, codeHtml);
     }
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -1053,6 +1236,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     }
 
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -1093,6 +1277,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       document.execCommand('formatBlock', false, '<blockquote>');
     }
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -1120,6 +1305,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
     }
 
     updateToolbarState();
+    recordHistorySnapshot(true);
     scheduleDebouncedSave();
   };
 
@@ -1382,10 +1568,16 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
         e.preventDefault();
         executeInsertLink();
       } else if (keyLower === 'z') {
-        // Native undo
+        e.preventDefault();
+        if (e.shiftKey) {
+          executeRedo();
+        } else {
+          executeUndo();
+        }
         return;
       } else if (keyLower === 'y') {
-        // Native redo
+        e.preventDefault();
+        executeRedo();
         return;
       } else if (keyLower === 'e' || e.key === '`') {
         e.preventDefault();
@@ -1417,108 +1609,117 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
       }
     } else if (e.key === 'Backspace') {
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+      if (selection && selection.rangeCount > 0 && selection.isCollapsed && editorContentRef.current) {
         const anchorNode = selection.anchorNode;
         const currentEl = anchorNode?.nodeType === Node.ELEMENT_NODE ? (anchorNode as HTMLElement) : anchorNode?.parentElement;
 
-        // Empty Checklist item Backspace
+        // 1. Checklist item Backspace
         const chkItem = currentEl?.closest('.checklist-item');
         if (chkItem) {
           const chkText = chkItem.querySelector('.chk-text');
-          const text = chkText?.textContent?.trim() || '';
-          if (text === '' || text === 'Task item' || selection.anchorOffset === 0) {
+          const isAtStart = selection.anchorOffset === 0;
+          const isEmpty = !chkText?.textContent || chkText.textContent.trim() === '' || chkText.textContent.trim() === 'Task item';
+
+          if (isEmpty || isAtStart) {
             e.preventDefault();
             const p = document.createElement('p');
-            p.innerHTML = text && text !== 'Task item' ? text : '<br>';
+            p.innerHTML = !isEmpty && chkText ? chkText.innerHTML : '<br>';
             chkItem.parentNode?.replaceChild(p, chkItem);
+
             const range = document.createRange();
             range.setStart(p, 0);
             range.collapse(true);
             selection.removeAllRanges();
             selection.addRange(range);
+
+            recordHistorySnapshot(true);
             scheduleDebouncedSave();
             updateToolbarState();
             return;
           }
         }
 
-        // Empty Heading Backspace
+        // 2. Heading Backspace (Preserve text when backspacing at start!)
         const heading = currentEl?.closest('h1, h2, h3');
-        if (heading && (heading.textContent?.trim() === '' || selection.anchorOffset === 0)) {
-          e.preventDefault();
-          const p = document.createElement('p');
-          p.innerHTML = '<br>';
-          heading.parentNode?.replaceChild(p, heading);
-          const range = document.createRange();
-          range.setStart(p, 0);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          scheduleDebouncedSave();
-          updateToolbarState();
-          return;
-        }
+        if (heading) {
+          const isAtStart = selection.anchorOffset === 0;
+          const isEmpty = heading.textContent?.trim() === '';
 
-        // Empty Blockquote Backspace
-        const bq = currentEl?.closest('blockquote');
-        if (bq && (bq.textContent?.trim() === '' || selection.anchorOffset === 0)) {
-          e.preventDefault();
-          const p = document.createElement('p');
-          p.innerHTML = '<br>';
-          bq.parentNode?.replaceChild(p, bq);
-          const range = document.createRange();
-          range.setStart(p, 0);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          scheduleDebouncedSave();
-          updateToolbarState();
-          return;
-        }
-
-        // Empty List Item (ul / ol) Backspace
-        const liItem = currentEl?.closest('li');
-        if (liItem && (liItem.textContent?.trim() === '' || selection.anchorOffset === 0)) {
-          const listParent = liItem.closest('ul, ol');
-          const parentLi = listParent?.parentElement?.closest('li');
-
-          if (parentLi && listParent) {
-            e.preventDefault();
-            liItem.remove();
-            if (listParent.children.length === 0) {
-              listParent.remove();
-            }
-
-            const newParentLi = document.createElement('li');
-            newParentLi.innerHTML = '<br>';
-            parentLi.after(newParentLi);
-
-            const range = document.createRange();
-            range.setStart(newParentLi, 0);
-            range.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(range);
-            scheduleDebouncedSave();
-            updateToolbarState();
-            return;
-          } else if (listParent) {
+          if (isEmpty || isAtStart) {
             e.preventDefault();
             const p = document.createElement('p');
-            p.innerHTML = '<br>';
-            if (listParent.children.length <= 1) {
-              listParent.parentNode?.replaceChild(p, listParent);
-            } else {
-              liItem.remove();
-              listParent.after(p);
-            }
+            p.innerHTML = !isEmpty ? heading.innerHTML : '<br>';
+            heading.parentNode?.replaceChild(p, heading);
+
             const range = document.createRange();
             range.setStart(p, 0);
             range.collapse(true);
             selection.removeAllRanges();
             selection.addRange(range);
+
+            recordHistorySnapshot(true);
             scheduleDebouncedSave();
             updateToolbarState();
             return;
+          }
+        }
+
+        // 3. Blockquote Backspace (Preserve text when backspacing at start!)
+        const bq = currentEl?.closest('blockquote');
+        if (bq) {
+          const isAtStart = selection.anchorOffset === 0;
+          const isEmpty = bq.textContent?.trim() === '';
+
+          if (isEmpty || isAtStart) {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = !isEmpty ? bq.innerHTML : '<br>';
+            bq.parentNode?.replaceChild(p, bq);
+
+            const range = document.createRange();
+            range.setStart(p, 0);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            recordHistorySnapshot(true);
+            scheduleDebouncedSave();
+            updateToolbarState();
+            return;
+          }
+        }
+
+        // 4. List Item Backspace
+        const liItem = currentEl?.closest('li');
+        if (liItem) {
+          const isAtStart = selection.anchorOffset === 0;
+          const isEmpty = liItem.textContent?.trim() === '';
+
+          if (isEmpty || isAtStart) {
+            const listParent = liItem.closest('ul, ol');
+            if (listParent) {
+              e.preventDefault();
+              const p = document.createElement('p');
+              p.innerHTML = !isEmpty ? liItem.innerHTML : '<br>';
+
+              if (listParent.children.length <= 1) {
+                listParent.parentNode?.replaceChild(p, listParent);
+              } else {
+                liItem.remove();
+                listParent.after(p);
+              }
+
+              const range = document.createRange();
+              range.setStart(p, 0);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+
+              recordHistorySnapshot(true);
+              scheduleDebouncedSave();
+              updateToolbarState();
+              return;
+            }
           }
         }
       }
@@ -1720,6 +1921,7 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
   };
 
   const handleEditorInput = () => {
+    recordHistorySnapshot();
     scheduleDebouncedSave();
     updateToolbarState();
 
@@ -2669,13 +2871,11 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Undo */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        document.execCommand('undo');
-                        updateToolbarState();
-                        scheduleDebouncedSave();
-                      }}
-                      className="p-1.5 rounded hover:bg-slate-200/80 hover:text-slate-900 text-slate-600 transition-colors cursor-pointer"
+                      onClick={() => executeUndo()}
+                      className="p-1.5 rounded hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                       data-tooltip="Undo (Ctrl+Z)"
                       data-tooltip-side="bottom"
                     >
@@ -2685,33 +2885,33 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Redo */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        document.execCommand('redo');
-                        updateToolbarState();
-                        scheduleDebouncedSave();
-                      }}
-                      className="p-1.5 rounded hover:bg-slate-200/80 hover:text-slate-900 text-slate-600 transition-colors cursor-pointer"
+                      onClick={() => executeRedo()}
+                      className="p-1.5 rounded hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                       data-tooltip="Redo (Ctrl+Y)"
                       data-tooltip-side="bottom"
                     >
                       <Redo2 className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="w-[1px] h-3.5 bg-slate-200 mx-1" />
+                    <div className="w-[1px] h-3.5 bg-slate-200 dark:bg-slate-700 mx-1" />
 
                     {/* Bold */}
                     <button
                       type="button"
                       disabled={activeFormats.quote}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeFormatting('bold')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.quote
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.bold
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip={activeFormats.quote ? "Bold not allowed in quotes" : "Bold (Ctrl+B)"}
                       data-tooltip-side="bottom"
@@ -2722,12 +2922,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Italic */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeFormatting('italic')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.italic
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Italic (Ctrl+I)"
                       data-tooltip-side="bottom"
@@ -2738,12 +2940,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Underline */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeFormatting('underline')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.underline
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Underline (Ctrl+U)"
                       data-tooltip-side="bottom"
@@ -2754,12 +2958,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Strikethrough */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeFormatting('strikeThrough')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.strike
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Strikethrough (Ctrl+Shift+X)"
                       data-tooltip-side="bottom"
@@ -2770,12 +2976,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Highlighter */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={executeHighlight}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.highlight
-                          ? 'bg-amber-200 text-amber-950 font-bold shadow-3xs ring-1 ring-amber-400'
-                          : 'text-amber-700 hover:bg-amber-100 hover:text-amber-950'
+                          ? 'bg-amber-200 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200 font-bold shadow-3xs ring-1 ring-amber-400'
+                          : 'text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 hover:text-amber-950 dark:hover:text-white'
                       }`}
                       data-tooltip="Highlighter (Ctrl+Shift+H)"
                       data-tooltip-side="bottom"
@@ -2786,6 +2994,8 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Text Color Picker Trigger */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const sel = window.getSelection();
@@ -2809,8 +3019,8 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       }}
                       className={`p-1.5 rounded transition-all cursor-pointer flex flex-col items-center justify-center relative ${
                         isTextColorPickerOpen
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs'
-                          : 'text-slate-700 hover:bg-slate-200/80 hover:text-slate-950'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white'
                       }`}
                       data-tooltip="Text Color"
                       data-tooltip-side="bottom"
@@ -2824,20 +3034,22 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       </div>
                     </button>
 
-                    <div className="w-[1px] h-3.5 bg-slate-200 mx-1" />
+                    <div className="w-[1px] h-3.5 bg-slate-200 dark:bg-slate-700 mx-1" />
 
                     {/* Heading 1 */}
                     <button
                       type="button"
                       disabled={activeFormats.quote || activeFormats.checklist}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeHeading('h1')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.quote || activeFormats.checklist
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.h1
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip={activeFormats.quote || activeFormats.checklist ? "Headings not allowed here" : "Heading 1 (Alt+1)"}
                       data-tooltip-side="bottom"
@@ -2849,14 +3061,16 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     <button
                       type="button"
                       disabled={activeFormats.quote || activeFormats.checklist}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeHeading('h2')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.quote || activeFormats.checklist
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.h2
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip={activeFormats.quote || activeFormats.checklist ? "Headings not allowed here" : "Heading 2 (Alt+2)"}
                       data-tooltip-side="bottom"
@@ -2868,14 +3082,16 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     <button
                       type="button"
                       disabled={activeFormats.quote || activeFormats.checklist}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeHeading('h3')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.quote || activeFormats.checklist
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.h3
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip={activeFormats.quote || activeFormats.checklist ? "Headings not allowed here" : "Heading 3 (Alt+3)"}
                       data-tooltip-side="bottom"
@@ -2883,20 +3099,22 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       <Heading3 className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="w-[1px] h-3.5 bg-slate-200 mx-1" />
+                    <div className="w-[1px] h-3.5 bg-slate-200 dark:bg-slate-700 mx-1" />
 
                     {/* Checklist */}
                     <button
                       type="button"
                       disabled={activeFormats.quote}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={executeChecklist}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.quote
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.checklist
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'hover:bg-slate-200/80 hover:text-slate-900 text-slate-600'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white text-slate-600 dark:text-slate-300'
                       }`}
                       data-tooltip="Checklist Item"
                       data-tooltip-side="bottom"
@@ -2907,12 +3125,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Bullet List */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeList('ul')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.ul
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Bullet List (Alt+B)"
                       data-tooltip-side="bottom"
@@ -2923,12 +3143,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Numbered List */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => executeList('ol')}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.ol
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Numbered List (Alt+N)"
                       data-tooltip-side="bottom"
@@ -2936,20 +3158,22 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                       <ListOrdered className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="w-[1px] h-3.5 bg-slate-200 mx-1" />
+                    <div className="w-[1px] h-3.5 bg-slate-200 dark:bg-slate-700 mx-1" />
 
                     {/* Blockquote */}
                     <button
                       type="button"
                       disabled={activeFormats.checklist}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={executeBlockquote}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.checklist
                           ? 'opacity-30 cursor-not-allowed text-slate-400'
                           : activeFormats.quote
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip={activeFormats.quote ? "Exit Quote Mode" : "Quote Block (Ctrl+Q)"}
                       data-tooltip-side="bottom"
@@ -2960,12 +3184,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Hyperlink */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={executeInsertLink}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.link
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Insert Link (Ctrl+K)"
                       data-tooltip-side="bottom"
@@ -2976,12 +3202,14 @@ export const NotesStudio: React.FC<NotesStudioProps> = ({
                     {/* Inline Code */}
                     <button
                       type="button"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onTouchStart={(e) => e.preventDefault()}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={executeInlineCode}
                       className={`p-1.5 rounded transition-all cursor-pointer ${
                         activeFormats.code
-                          ? 'bg-blue-100 text-[#2563EB] font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
-                          : 'text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                          ? 'bg-blue-100 dark:bg-blue-950 text-[#2563EB] dark:text-blue-400 font-bold shadow-3xs border border-blue-300 dark:border-blue-800'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                       }`}
                       data-tooltip="Inline Code (Ctrl+E)"
                       data-tooltip-side="bottom"
