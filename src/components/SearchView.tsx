@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getLocalDateString } from '../utils/dateUtils';
 import {
   ChevronLeft,
   SlidersHorizontal,
@@ -315,7 +316,7 @@ function renderSearchLinkIcon(url?: string, type?: string, title?: string) {
 
 function formatSearchDueDate(dateStr?: string) {
   if (!dateStr) return null;
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const isOverdue = dateStr < todayStr;
   const isToday = dateStr.includes(todayStr);
 
@@ -358,7 +359,7 @@ const SearchResultItemCard = React.memo<SearchResultItemCardProps>(({
       onClick={() => onSelect(item)}
       className={`group px-3.5 py-2 sm:py-2.5 flex items-center justify-between gap-3 transition-all cursor-pointer select-none last:rounded-b-[11px] ${
         isCurrentMatch
-          ? 'bg-blue-50/90 dark:bg-blue-950/60 ring-1 ring-inset ring-[#2563EB]/40 dark:ring-blue-500/50'
+          ? 'bg-blue-50/90 dark:bg-blue-950/60'
           : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/60'
       }`}
     >
@@ -595,16 +596,16 @@ const SearchCategoryGroupCard = React.memo<SearchCategoryGroupCardProps>(({
   onToggleTask
 }) => {
   return (
-    <div className="bg-white border border-slate-200/80 rounded-lg overflow-hidden shadow-2xs">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg overflow-hidden shadow-2xs">
       <button
         type="button"
         onClick={() => onToggleCollapse(group.id)}
-        className="w-full px-3.5 py-2.5 bg-slate-50/75 hover:bg-slate-100/80 border-b border-slate-200/60 flex items-center justify-between transition-colors cursor-pointer select-none"
+        className="w-full px-3.5 py-2.5 bg-slate-50/75 dark:bg-slate-800/60 hover:bg-slate-100/80 dark:hover:bg-slate-800/90 border-b border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between transition-colors cursor-pointer select-none"
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs sm:text-[13px] font-bold text-slate-800">
+          <span className="text-xs sm:text-[13px] font-bold text-slate-800 dark:text-slate-100">
             {group.label}{' '}
-            <span className="text-[#2563EB] font-bold">({group.items.length})</span>
+            <span className="text-[#2563EB] dark:text-blue-400 font-bold">({group.items.length})</span>
           </span>
         </div>
         <ChevronDown
@@ -615,7 +616,7 @@ const SearchCategoryGroupCard = React.memo<SearchCategoryGroupCardProps>(({
       </button>
 
       {!isCollapsed && (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
           {group.items.map(item => (
             <SearchResultItemCard
               key={item.id}
@@ -1118,7 +1119,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
     // 4. Filter by Due Date (Sidebar)
     if (searchDueDateFilter !== 'all') {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getLocalDateString();
       if (searchDueDateFilter === 'has-due') {
         list = list.filter(item => !!item.dueDate);
       } else if (searchDueDateFilter === 'today') {
@@ -2092,17 +2093,17 @@ export const SearchView: React.FC<SearchViewProps> = ({
                           >
                           {/* Recent Searches Section (if any saved) */}
                           {recentSearches.length > 0 && (
-                            <div className="bg-white border border-slate-200/80 rounded-lg px-3.5 sm:px-4 py-2.5 sm:py-3 shadow-2xs flex flex-col gap-2 sm:gap-2.5">
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg px-3.5 sm:px-4 py-2.5 sm:py-3 shadow-2xs flex flex-col gap-2 sm:gap-2.5">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                                  <History className="w-4 h-4 text-[#2563EB]" />
+                                <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  <History className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
                                   <span>Recent Searches</span>
                                 </div>
                                 {recentSearches.length > 4 && (
                                   <button
                                     type="button"
                                     onClick={() => setIsRecentSearchesExpanded(prev => !prev)}
-                                    className="text-[11px] font-semibold text-[#2563EB] hover:text-blue-700 transition-colors cursor-pointer select-none"
+                                    className="text-[11px] font-semibold text-[#2563EB] dark:text-blue-400 hover:text-blue-700 transition-colors cursor-pointer select-none"
                                   >
                                     {isRecentSearchesExpanded ? 'Show less' : 'See all'}
                                   </button>
@@ -2123,14 +2124,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                         saveRecentSearch(rec);
                                         searchPageInputRef.current?.focus();
                                       }}
-                                      className="flex items-center gap-1 pl-2.5 pr-1.5 sm:pl-3 sm:pr-2 py-1.5 rounded-md bg-slate-50 hover:bg-blue-50 active:bg-blue-100 border border-slate-200/80 hover:border-blue-300 text-xs font-medium text-slate-700 hover:text-[#2563EB] cursor-pointer group shrink-0 select-none max-w-full transition-colors"
+                                      className="flex items-center gap-1 pl-2.5 pr-1.5 sm:pl-3 sm:pr-2 py-1.5 rounded-md bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 active:bg-blue-100 border border-slate-200/80 dark:border-slate-700 hover:border-blue-300 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-[#2563EB] dark:hover:text-blue-400 cursor-pointer group shrink-0 select-none max-w-full transition-colors"
                                     >
                                       <span className="truncate max-w-[125px] sm:max-w-[155px]" title={rec}>{rec}</span>
                                       <button
                                         type="button"
                                         onClick={(e) => deleteRecentSearch(rec, e)}
                                         onTouchEnd={(e) => e.stopPropagation()}
-                                        className="p-0.5 rounded-full text-slate-400 hover:text-rose-500 active:text-rose-600 hover:bg-slate-200/60 transition-colors shrink-0 cursor-pointer"
+                                        className="p-0.5 rounded-full text-slate-400 hover:text-rose-500 active:text-rose-600 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
                                         title="Remove"
                                       >
                                         <X className="w-3 h-3" />
@@ -2143,23 +2144,23 @@ export const SearchView: React.FC<SearchViewProps> = ({
                           )}
 
                           {/* Initial Empty Prompt Card */}
-                          <div className="bg-white border border-slate-200/80 rounded-lg p-8 sm:p-10 text-center flex flex-col items-center justify-center gap-3 shadow-2xs">
+                          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg p-8 sm:p-10 text-center flex flex-col items-center justify-center gap-3 shadow-2xs">
                             <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 flex items-center justify-center shadow-3xs">
                               <Search className="w-6 h-6 stroke-[2]" />
                             </div>
-                            <h3 className="text-sm sm:text-base font-bold text-slate-800">Start typing to search</h3>
-                            <p className="text-xs text-slate-500 max-w-sm">
+                            <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100">Start typing to search</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
                               Type any keyword to instantly find workspaces, sections, topics, tasks, notes, and links across your study plan.
                             </p>
                             {recentClickedResults.length > 0 && (
                               <div className="flex items-center gap-2 mt-2 flex-wrap justify-center text-xs text-slate-400">
-                                <span className="font-medium text-slate-500">Quick explore:</span>
+                                <span className="font-medium text-slate-500 dark:text-slate-400">Quick explore:</span>
                                 {recentClickedResults.map(item => (
                                   <button
                                     key={item.id}
                                     type="button"
                                     onClick={() => handleSelectSearchResult(item)}
-                                    className="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-blue-50 hover:text-[#2563EB] text-slate-700 font-medium transition-colors cursor-pointer border border-slate-200/60 max-w-[200px] truncate"
+                                    className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-[#2563EB] dark:hover:text-blue-400 text-slate-700 dark:text-slate-200 font-medium transition-colors cursor-pointer border border-slate-200/60 dark:border-slate-700 max-w-[200px] truncate"
                                     title={`Open ${item.title}`}
                                   >
                                     {item.title}
@@ -2180,12 +2181,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         >
                           {finalGlobalSearchResults.length === 0 ? (
                         /* No matching results */
-                        <div className="bg-white border border-slate-200/80 rounded-lg p-10 text-center flex flex-col items-center justify-center gap-3 shadow-2xs">
-                          <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
+                        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg p-10 text-center flex flex-col items-center justify-center gap-3 shadow-2xs">
+                          <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
                             <Search className="w-6 h-6" />
                           </div>
-                          <h3 className="text-sm font-bold text-slate-800">No matching results found</h3>
-                          <p className="text-xs text-slate-500 max-w-sm">
+                          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">No matching results found</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
                             No items match your search query or active filters. Try searching for other keywords or clearing your filters.
                           </p>
                           {(searchSelectedWorkspaces.length > 0 || searchActiveCategory !== 'all' || searchSelectedStatuses.length < 3 || searchDueDateFilter !== 'all') && (
@@ -2198,7 +2199,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                 setSearchDueDateFilter('all');
                                 setSearchPageQuery('');
                               }}
-                              className="mt-2 px-3.5 py-1.5 rounded-md bg-blue-50 hover:bg-blue-100 text-[#2563EB] text-xs font-bold transition-colors cursor-pointer"
+                              className="mt-2 px-3.5 py-1.5 rounded-md bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-[#2563EB] dark:text-blue-400 text-xs font-bold transition-colors cursor-pointer"
                             >
                               Reset all filters
                             </button>
@@ -2237,13 +2238,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.14, ease: 'easeOut' }}
-                        className="hidden xl:flex w-[260px] 2xl:w-[275px] shrink-0 bg-white border border-slate-200/80 rounded-lg p-3.5 sm:p-4 shadow-2xs flex-col gap-4 xl:absolute xl:right-0 xl:top-0 z-10"
+                        className="hidden xl:flex w-[260px] 2xl:w-[275px] shrink-0 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg p-3.5 sm:p-4 shadow-2xs flex-col gap-4 xl:absolute xl:right-0 xl:top-0 z-10"
                       >
                       {/* Filter Header */}
-                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                         <div className="flex items-center gap-2">
-                          <SlidersHorizontal className="w-4 h-4 text-slate-700" />
-                          <h3 className="font-bold text-sm text-slate-900">Filters</h3>
+                          <SlidersHorizontal className="w-4 h-4 text-slate-700 dark:text-slate-300" />
+                          <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">Filters</h3>
                         </div>
                         <button
                           type="button"
@@ -2253,7 +2254,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             setSearchDueDateFilter('all');
                             setSearchActiveCategory('all');
                           }}
-                          className="text-xs font-semibold text-[#2563EB] hover:underline cursor-pointer"
+                          className="text-xs font-semibold text-[#2563EB] dark:text-blue-400 hover:underline cursor-pointer"
                         >
                           Reset
                         </button>
@@ -2261,7 +2262,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
                       {/* Section 1: Workspaces Checkboxes */}
                       <div className="flex flex-col gap-2.5">
-                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Workspaces</h4>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Workspaces</h4>
                         <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto no-scrollbar">
                           {workspaces.map(ws => {
                             const isSelected = searchSelectedWorkspaces.includes(ws.id);
@@ -2269,7 +2270,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             return (
                               <label
                                 key={ws.id}
-                                className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer select-none group"
+                                className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer select-none group"
                               >
                                 <div className="flex items-center gap-2 min-w-0">
                                   <input
@@ -2285,9 +2286,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                         setSearchSelectedWorkspaces([...searchSelectedWorkspaces, ws.id]);
                                       }
                                     }}
-                                    className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-slate-300 cursor-pointer"
+                                    className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
                                   />
-                                  <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900 truncate">
+                                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 truncate">
                                     {ws.name}
                                   </span>
                                 </div>
@@ -2301,8 +2302,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       </div>
 
                       {/* Section 2: Status Checkboxes */}
-                      <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
-                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Status</h4>
+                      <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Status</h4>
                         <div className="flex flex-col gap-1.5">
                           {[
                             { id: 'completed', label: 'Completed', count: searchStatusCounts.completed },
@@ -2313,7 +2314,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             return (
                               <label
                                 key={st.id}
-                                className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer select-none group"
+                                className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer select-none group"
                               >
                                 <div className="flex items-center gap-2 min-w-0">
                                   <input
@@ -2326,9 +2327,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
                                         setSearchSelectedStatuses([...searchSelectedStatuses, st.id as any]);
                                       }
                                     }}
-                                    className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-slate-300 cursor-pointer"
+                                    className="w-4 h-4 rounded text-[#2563EB] focus:ring-[#2563EB] border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
                                   />
-                                  <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">
+                                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100">
                                     {st.label}
                                   </span>
                                 </div>
@@ -2338,6 +2339,38 @@ export const SearchView: React.FC<SearchViewProps> = ({
                               </label>
                             );
                           })}
+                        </div>
+                      </div>
+
+                      {/* Section 3: Due Date Filter Radios */}
+                      <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">Due Date</h4>
+                        <div className="flex flex-col gap-1.5">
+                          {[
+                            { id: 'all', label: 'All Tasks' },
+                            { id: 'today', label: 'Due Today' },
+                            { id: 'upcoming', label: 'Upcoming' },
+                            { id: 'overdue', label: 'Overdue' },
+                          ].map(opt => (
+                            <label
+                              key={opt.id}
+                              className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer select-none group"
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  name="searchDueDateFilter"
+                                  value={opt.id}
+                                  checked={searchDueDateFilter === opt.id}
+                                  onChange={() => setSearchDueDateFilter(opt.id as any)}
+                                  className="w-4 h-4 text-[#2563EB] focus:ring-[#2563EB] border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100">
+                                  {opt.label}
+                                </span>
+                              </div>
+                            </label>
+                          ))}
                         </div>
                       </div>
                     </motion.div>

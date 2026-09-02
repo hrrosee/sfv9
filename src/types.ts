@@ -76,3 +76,18 @@ export interface UserSettings {
   focusCheckIntervalMinutes?: number;
   focusCheckIntervalEnabled?: boolean;
 }
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  time: string;
+  read: boolean;
+  type?: 'focus' | 'reminders' | 'system';
+  description?: string;
+}
+
+export interface ToastData {
+  message: string;
+  undoAction?: () => void;
+  duration?: number;
+}

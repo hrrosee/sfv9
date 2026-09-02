@@ -232,6 +232,48 @@ class SoundEffects {
       // Audio autoplay policy catch
     }
   }
+
+  /**
+   * Dual harmonic chime for push notifications and device alerts
+   */
+  playNotificationAudioChime() {
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      // Tone 1: 587.33 Hz (D5)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+      gain1.gain.setValueAtTime(0.35, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.45);
+
+      // Tone 2: 880 Hz (A5)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, now + 0.2);
+      gain2.gain.setValueAtTime(0.45, now + 0.2);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.2);
+      osc2.stop(now + 0.85);
+    } catch {
+      // Audio autoplay policy catch
+    }
+  }
 }
 
 export const soundManager = new SoundEffects();
+
+export function playNotificationAudioChime() {
+  soundManager.playNotificationAudioChime();
+}
+

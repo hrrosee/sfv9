@@ -1268,12 +1268,13 @@ const TopicCardBlock: React.FC<TopicCardBlockProps> = ({
                             key={p.id}
                             type="button"
                             onClick={() => onUpdate({ ...topic, color: p.id })}
-                            className={`h-7 rounded-lg ${p.bgClass} flex items-center justify-center text-white cursor-pointer transition-all ${
+                            style={{ backgroundColor: p.color }}
+                            className={`h-7 rounded-lg ${p.bgClass} preserve-color flex items-center justify-center text-white cursor-pointer transition-all ${
                               isSelected ? 'ring-2 ring-offset-1 ring-slate-900 scale-105 shadow-xs' : 'hover:opacity-90 hover:scale-105'
                             }`}
                             title={p.name}
                           >
-                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            {isSelected && <Check className="w-3 h-3 stroke-[3] preserve-color" />}
                           </button>
                         );
                       })}

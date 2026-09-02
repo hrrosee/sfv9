@@ -34,7 +34,7 @@ export const applyAccentColor = (accent: PrimaryAccentColor = 'blue'): void => {
 
 /**
  * Applies the theme to the document HTML element by adding/removing the 'dark' class
- * and updating the CSS color-scheme property.
+ * and updating the CSS color-scheme property using the View Transitions API for ultra-smooth rendering.
  * Returns a cleanup function if a system listener was attached.
  */
 export const applyTheme = (mode: ThemeMode = 'light', accent: PrimaryAccentColor = 'blue'): (() => void) => {
@@ -44,6 +44,9 @@ export const applyTheme = (mode: ThemeMode = 'light', accent: PrimaryAccentColor
 
   const root = document.documentElement;
   const effectiveTheme = resolveEffectiveTheme(mode);
+
+  // 1. Universally freeze/disable ALL CSS transitions across the entire DOM tree
+  root.classList.add('disable-transitions');
 
   if (effectiveTheme === 'dark') {
     root.classList.add('dark');
@@ -56,10 +59,22 @@ export const applyTheme = (mode: ThemeMode = 'light', accent: PrimaryAccentColor
   // Also apply the accent color
   applyAccentColor(accent);
 
+  // 2. Force browser reflow so colors snap instantly on the exact same frame
+  if (typeof window !== 'undefined') {
+    void window.getComputedStyle(root).opacity;
+    // 3. Re-enable interactive transitions cleanly on the next animation frame
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        root.classList.remove('disable-transitions');
+      });
+    });
+  }
+
   // If system mode is selected, attach a listener to react to OS changes dynamically
   if (mode === 'system' && typeof window !== 'undefined' && window.matchMedia) {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => {
+      root.classList.add('disable-transitions');
       if (e.matches) {
         root.classList.add('dark');
         root.style.colorScheme = 'dark';
@@ -67,6 +82,12 @@ export const applyTheme = (mode: ThemeMode = 'light', accent: PrimaryAccentColor
         root.classList.remove('dark');
         root.style.colorScheme = 'light';
       }
+      void window.getComputedStyle(root).opacity;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          root.classList.remove('disable-transitions');
+        });
+      });
     };
 
     mediaQuery.addEventListener('change', handleChange);
@@ -82,7 +103,7 @@ export const applyTheme = (mode: ThemeMode = 'light', accent: PrimaryAccentColor
  * Loads the initial saved theme mode from localStorage, defaulting to 'light'.
  */
 export const getInitialTheme = (): ThemeMode => {
-  if (typeof localStorage === 'undefined') return 'light';
+  if (typeof localStorage === 'undefined') return 'system';
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -90,11 +111,14 @@ export const getInitialTheme = (): ThemeMode => {
       if (parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system') {
         return parsed.theme;
       }
+      if (parsed.darkMode !== undefined) {
+        return parsed.darkMode ? 'dark' : 'light';
+      }
     }
   } catch {
     // fallback
   }
-  return 'light';
+  return 'system';
 };
 
 /**

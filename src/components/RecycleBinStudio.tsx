@@ -193,27 +193,40 @@ function calculateDaysLeft(date: Date): number {
   return Math.max(1, Math.min(30, daysRemaining));
 }
 
-// Helper to parse date
+// Helper to parse date accurately
 function parseItemDate(deletedAt?: string, fallbackTimestamp?: number): Date {
   if (deletedAt) {
-    const standardDate = new Date(deletedAt);
-    if (!isNaN(standardDate.getTime())) return standardDate;
+    const trimmed = String(deletedAt).trim();
+    if (!trimmed) return fallbackTimestamp ? new Date(fallbackTimestamp) : new Date(0);
 
-    if (deletedAt.includes('/')) {
-      const parts = deletedAt.split(/[\s/:]+/);
+    // 1. Numeric timestamp string (e.g. 1725234567890)
+    if (/^\d{10,13}$/.test(trimmed)) {
+      const ts = parseInt(trimmed, 10);
+      const d = new Date(ts < 1e11 ? ts * 1000 : ts);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // 2. Format with slashes: DD/MM/YYYY hh:mm AM/PM (Study Flow standard format)
+    if (trimmed.includes('/')) {
+      const parts = trimmed.split(/[\s/:]+/);
       if (parts.length >= 3) {
         const d = parseInt(parts[0], 10);
         const m = parseInt(parts[1], 10) - 1;
         const y = parseInt(parts[2], 10);
         let hr = parts[3] ? parseInt(parts[3], 10) : 12;
         const min = parts[4] ? parseInt(parts[4], 10) : 0;
-        const ampm = deletedAt.toLowerCase().includes('pm') ? 'pm' : deletedAt.toLowerCase().includes('am') ? 'am' : '';
+        const sec = parts[5] && !isNaN(parseInt(parts[5], 10)) && !/^(am|pm)$/i.test(parts[5]) ? parseInt(parts[5], 10) : 0;
+        const ampm = trimmed.toLowerCase().includes('pm') ? 'pm' : trimmed.toLowerCase().includes('am') ? 'am' : '';
         if (ampm === 'pm' && hr < 12) hr += 12;
         if (ampm === 'am' && hr === 12) hr = 0;
-        const parsed = new Date(y, m, d, hr, min);
+        const parsed = new Date(y, m, d, hr, min, sec);
         if (!isNaN(parsed.getTime())) return parsed;
       }
     }
+
+    // 3. Standard ISO 8601 string (e.g. 2026-09-02T03:30:00.000Z)
+    const standardDate = new Date(trimmed);
+    if (!isNaN(standardDate.getTime())) return standardDate;
   }
   if (fallbackTimestamp) {
     const fromTs = new Date(fallbackTimestamp);
@@ -446,12 +459,15 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     const items: UnifiedRecycleItem[] = [];
 
     // 1. Workspaces
-    deletedWorkspaces.forEach(item => {
+    (deletedWorkspaces || []).forEach(item => {
+      if (!item) return;
+      const ws = item.workspace || (item as any);
+      if (!ws || !ws.id) return;
       const parsedDate = parseItemDate(item.deletedAt);
       items.push({
-        id: `ws-${item.workspace.id}`,
+        id: `ws-${ws.id}`,
         type: 'workspace',
-        title: item.workspace.name || 'Untitled Workspace',
+        title: ws.name || 'Untitled Workspace',
         originalLocation: '—',
         locationPath: [],
         deletedAtDate: parsedDate,
@@ -464,29 +480,33 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     });
 
     // 2. Sections
-    deletedSections.forEach(item => {
+    (deletedSections || []).forEach(item => {
+      if (!item) return;
+      const sec = item.section || (item as any);
+      if (!sec || !sec.id) return;
       const parsedDate = parseItemDate(item.deletedAt);
-      const wsName = workspaceMap.get(item.section.workspaceId) || 'Workspace';
+      const wsName = (sec.workspaceId && workspaceMap.get(sec.workspaceId)) || 'Workspace';
       const topicsCount = item.topics?.length || 0;
       items.push({
-        id: `sec-${item.section.id}`,
+        id: `sec-${sec.id}`,
         type: 'section',
-        title: item.section.name || 'Untitled Section',
+        title: sec.name || 'Untitled Section',
         originalLocation: wsName,
         locationPath: [{ label: wsName }],
         deletedAtDate: parsedDate,
         deletedAtFormatted: formatDeletedOnDate(parsedDate, item.deletedAt),
         daysLeft: calculateDaysLeft(parsedDate),
         itemCountInfo: topicsCount > 0 ? `${topicsCount} topics included` : 'Section Container',
-        rawData: item.section,
+        rawData: item,
         originalIndex: items.length,
       });
     });
 
     // 3. Topics (Includes their notes, links, tasks)
-    deletedTopics.forEach(topic => {
+    (deletedTopics || []).forEach(topic => {
+      if (!topic || !topic.id) return;
       const parsedDate = parseItemDate(topic.deletedAt);
-      const wsName = workspaceMap.get(topic.workspaceId) || 'Workspace';
+      const wsName = (topic.workspaceId && workspaceMap.get(topic.workspaceId)) || 'Workspace';
       const path: BreadcrumbPart[] = [{ label: wsName }];
       if (topic.section) path.push({ label: topic.section });
 
@@ -502,7 +522,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
       items.push({
         id: `topic-${topic.id}`,
         type: 'topic',
-        title: topic.title || topic.name || 'Untitled Topic',
+        title: topic.title || (topic as any).name || 'Untitled Topic',
         originalLocation: path.map(p => p.label).join(' > '),
         locationPath: path,
         deletedAtDate: parsedDate,
@@ -515,9 +535,10 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     });
 
     // 4. Tasks (Individually deleted tasks)
-    deletedTasks.forEach(item => {
+    (deletedTasks || []).forEach(item => {
+      if (!item || !item.task || !item.task.id) return;
       const parsedDate = parseItemDate(item.deletedAt);
-      const wsName = workspaceMap.get(item.workspaceId) || 'Workspace';
+      const wsName = (item.workspaceId && workspaceMap.get(item.workspaceId)) || 'Workspace';
       const path: BreadcrumbPart[] = [{ label: wsName }];
       if (item.topicTitle) path.push({ label: item.topicTitle, isHighlight: true });
 
@@ -537,7 +558,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     });
 
     // 5. Notes (From Notes Studio)
-    deletedNotes.forEach(item => {
+    (deletedNotes || []).forEach(item => {
+      if (!item || !item.note || !item.note.id) return;
       const parsedDate = parseItemDate(item.deletedAt, item.note.updatedAt || item.note.createdAt);
       const wsName = item.note.workspaceId ? (workspaceMap.get(item.note.workspaceId) || 'Workspace') : 'Global Notes';
       items.push({
@@ -556,7 +578,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     });
 
     // 6. Topic & Task Micro-Notes
-    deletedTopicNotes.forEach(item => {
+    (deletedTopicNotes || []).forEach(item => {
+      if (!item || !item.note || !item.note.id) return;
       const parsedDate = parseItemDate(item.deletedAt);
       const wsName = item.workspaceId ? (workspaceMap.get(item.workspaceId) || 'Workspace') : 'Workspace';
       const path: BreadcrumbPart[] = [{ label: wsName }];
@@ -579,7 +602,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     });
 
     // 7. Topic & Task Resource Links
-    deletedTopicLinks.forEach(item => {
+    (deletedTopicLinks || []).forEach(item => {
+      if (!item || !item.link || !item.link.id) return;
       const parsedDate = parseItemDate(item.deletedAt);
       const wsName = item.workspaceId ? (workspaceMap.get(item.workspaceId) || 'Workspace') : 'Workspace';
       const path: BreadcrumbPart[] = [{ label: wsName }];
@@ -632,12 +656,12 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
       if (sortBy === 'newest') {
         const timeDiff = b.deletedAtDate.getTime() - a.deletedAtDate.getTime();
         if (timeDiff !== 0) return timeDiff;
-        return a.originalIndex - b.originalIndex;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
       }
       if (sortBy === 'oldest') {
         const timeDiff = a.deletedAtDate.getTime() - b.deletedAtDate.getTime();
         if (timeDiff !== 0) return timeDiff;
-        return b.originalIndex - a.originalIndex;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
       }
       if (sortBy === 'alphabetical') {
         const titleDiff = (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
@@ -648,7 +672,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
         const order: Record<string, number> = { workspace: 1, section: 2, topic: 3, task: 4, note: 5, link: 6 };
         const typeDiff = (order[a.type] || 99) - (order[b.type] || 99);
         if (typeDiff !== 0) return typeDiff;
-        return b.deletedAtDate.getTime() - a.deletedAtDate.getTime();
+        const timeDiff = b.deletedAtDate.getTime() - a.deletedAtDate.getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return (a.title || '').localeCompare(b.title || '', undefined, { numeric: true, sensitivity: 'base' });
       }
       return 0;
     });
@@ -676,21 +702,28 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   const handleRestoreItem = (item: UnifiedRecycleItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (item.type === 'workspace') {
-      onRestoreWorkspace(item.rawData.workspace.id);
+      const wsId = item.rawData?.workspace?.id || item.rawData?.id || item.id.replace(/^ws-/, '');
+      if (wsId) onRestoreWorkspace(wsId);
     } else if (item.type === 'section' && onRestoreSection) {
-      onRestoreSection(item.rawData.id);
+      const secId = item.rawData?.section?.id || item.rawData?.id || item.rawData?.section?.name || item.id.replace(/^sec-/, '');
+      if (secId) onRestoreSection(secId);
     } else if (item.type === 'topic') {
-      onRestoreTopic(item.rawData.id);
+      const topicId = item.rawData?.id || item.id.replace(/^topic-/, '');
+      if (topicId) onRestoreTopic(topicId);
     } else if (item.type === 'task' && onRestoreTask) {
-      onRestoreTask(item.rawData.task.id);
+      const taskId = item.rawData?.task?.id || item.rawData?.id || item.id.replace(/^task-/, '');
+      if (taskId) onRestoreTask(taskId);
     } else if (item.type === 'note') {
-      if (item.rawData.isTopicNoteEntry && onRestoreTopicNote) {
-        onRestoreTopicNote(item.rawData.note.id);
+      if (item.rawData?.isTopicNoteEntry && onRestoreTopicNote) {
+        const noteId = item.rawData?.note?.id || item.rawData?.id || item.id.replace(/^tnote-/, '');
+        if (noteId) onRestoreTopicNote(noteId);
       } else if (onRestoreNote) {
-        onRestoreNote(item.rawData.id);
+        const noteId = item.rawData?.id || item.id.replace(/^note-/, '');
+        if (noteId) onRestoreNote(noteId);
       }
     } else if (item.type === 'link' && onRestoreTopicLink) {
-      onRestoreTopicLink(item.rawData.link.id);
+      const linkId = item.rawData?.link?.id || item.rawData?.id || item.id.replace(/^tlink-/, '');
+      if (linkId) onRestoreTopicLink(linkId);
     }
     setSelectedIds(prev => prev.filter(id => id !== item.id));
     if (previewItem?.id === item.id) {
@@ -702,21 +735,28 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   const handlePermanentDeleteItem = (item: UnifiedRecycleItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (item.type === 'workspace') {
-      onPermanentDeleteWorkspace(item.rawData.workspace.id);
+      const wsId = item.rawData?.workspace?.id || item.rawData?.id;
+      if (wsId) onPermanentDeleteWorkspace(wsId);
     } else if (item.type === 'section' && onPermanentDeleteSection) {
-      onPermanentDeleteSection(item.rawData.id);
+      const secId = item.rawData?.section?.id || item.rawData?.id;
+      if (secId) onPermanentDeleteSection(secId);
     } else if (item.type === 'topic') {
-      onPermanentDeleteTopic(item.rawData.id);
+      const topicId = item.rawData?.id;
+      if (topicId) onPermanentDeleteTopic(topicId);
     } else if (item.type === 'task' && onPermanentDeleteTask) {
-      onPermanentDeleteTask(item.rawData.task.id);
+      const taskId = item.rawData?.task?.id || item.rawData?.id;
+      if (taskId) onPermanentDeleteTask(taskId);
     } else if (item.type === 'note') {
-      if (item.rawData.isTopicNoteEntry && onPermanentDeleteTopicNote) {
-        onPermanentDeleteTopicNote(item.rawData.note.id);
+      if (item.rawData?.isTopicNoteEntry && onPermanentDeleteTopicNote) {
+        const noteId = item.rawData?.note?.id || item.rawData?.id;
+        if (noteId) onPermanentDeleteTopicNote(noteId);
       } else if (onPermanentDeleteNote) {
-        onPermanentDeleteNote(item.rawData.id);
+        const noteId = item.rawData?.id;
+        if (noteId) onPermanentDeleteNote(noteId);
       }
     } else if (item.type === 'link' && onPermanentDeleteTopicLink) {
-      onPermanentDeleteTopicLink(item.rawData.link.id);
+      const linkId = item.rawData?.link?.id || item.rawData?.id;
+      if (linkId) onPermanentDeleteTopicLink(linkId);
     }
     setSelectedIds(prev => prev.filter(id => id !== item.id));
     if (previewItem?.id === item.id) {
@@ -731,15 +771,29 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     selectedIds.forEach(id => {
       const item = unifiedItems.find(i => i.id === id);
       if (item) {
-        if (item.type === 'workspace') onRestoreWorkspace(item.rawData.workspace.id);
-        else if (item.type === 'section' && onRestoreSection) onRestoreSection(item.rawData.id);
-        else if (item.type === 'topic') onRestoreTopic(item.rawData.id);
-        else if (item.type === 'task' && onRestoreTask) onRestoreTask(item.rawData.task.id);
-        else if (item.type === 'note') {
-          if (item.rawData.isTopicNoteEntry && onRestoreTopicNote) onRestoreTopicNote(item.rawData.note.id);
-          else if (onRestoreNote) onRestoreNote(item.rawData.id);
+        if (item.type === 'workspace') {
+          const wsId = item.rawData?.workspace?.id || item.rawData?.id;
+          if (wsId) onRestoreWorkspace(wsId);
+        } else if (item.type === 'section' && onRestoreSection) {
+          const secId = item.rawData?.section?.id || item.rawData?.id;
+          if (secId) onRestoreSection(secId);
+        } else if (item.type === 'topic') {
+          const topicId = item.rawData?.id;
+          if (topicId) onRestoreTopic(topicId);
+        } else if (item.type === 'task' && onRestoreTask) {
+          const taskId = item.rawData?.task?.id || item.rawData?.id;
+          if (taskId) onRestoreTask(taskId);
+        } else if (item.type === 'note') {
+          if (item.rawData?.isTopicNoteEntry && onRestoreTopicNote) {
+            const noteId = item.rawData?.note?.id || item.rawData?.id;
+            if (noteId) onRestoreTopicNote(noteId);
+          } else if (onRestoreNote) {
+            const noteId = item.rawData?.id;
+            if (noteId) onRestoreNote(noteId);
+          }
         } else if (item.type === 'link' && onRestoreTopicLink) {
-          onRestoreTopicLink(item.rawData.link.id);
+          const linkId = item.rawData?.link?.id || item.rawData?.id;
+          if (linkId) onRestoreTopicLink(linkId);
         }
       }
     });
@@ -757,15 +811,29 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     selectedIds.forEach(id => {
       const item = unifiedItems.find(i => i.id === id);
       if (item) {
-        if (item.type === 'workspace') onPermanentDeleteWorkspace(item.rawData.workspace.id);
-        else if (item.type === 'section' && onPermanentDeleteSection) onPermanentDeleteSection(item.rawData.id);
-        else if (item.type === 'topic') onPermanentDeleteTopic(item.rawData.id);
-        else if (item.type === 'task' && onPermanentDeleteTask) onPermanentDeleteTask(item.rawData.task.id);
-        else if (item.type === 'note') {
-          if (item.rawData.isTopicNoteEntry && onPermanentDeleteTopicNote) onPermanentDeleteTopicNote(item.rawData.note.id);
-          else if (onPermanentDeleteNote) onPermanentDeleteNote(item.rawData.id);
+        if (item.type === 'workspace') {
+          const wsId = item.rawData?.workspace?.id || item.rawData?.id;
+          if (wsId) onPermanentDeleteWorkspace(wsId);
+        } else if (item.type === 'section' && onPermanentDeleteSection) {
+          const secId = item.rawData?.section?.id || item.rawData?.id;
+          if (secId) onPermanentDeleteSection(secId);
+        } else if (item.type === 'topic') {
+          const topicId = item.rawData?.id;
+          if (topicId) onPermanentDeleteTopic(topicId);
+        } else if (item.type === 'task' && onPermanentDeleteTask) {
+          const taskId = item.rawData?.task?.id || item.rawData?.id;
+          if (taskId) onPermanentDeleteTask(taskId);
+        } else if (item.type === 'note') {
+          if (item.rawData?.isTopicNoteEntry && onPermanentDeleteTopicNote) {
+            const noteId = item.rawData?.note?.id || item.rawData?.id;
+            if (noteId) onPermanentDeleteTopicNote(noteId);
+          } else if (onPermanentDeleteNote) {
+            const noteId = item.rawData?.id;
+            if (noteId) onPermanentDeleteNote(noteId);
+          }
         } else if (item.type === 'link' && onPermanentDeleteTopicLink) {
-          onPermanentDeleteTopicLink(item.rawData.link.id);
+          const linkId = item.rawData?.link?.id || item.rawData?.id;
+          if (linkId) onPermanentDeleteTopicLink(linkId);
         }
       }
     });

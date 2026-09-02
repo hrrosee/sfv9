@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="overflow-x-hidden">
+<html lang="en" class="disable-transitions">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, interactive-widget=resizes-content" />
@@ -12,7 +12,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script>
       (function() {
@@ -34,8 +34,37 @@
         }
       })();
     </script>
+    <!-- Zero-Flicker Instant Theme & Accent Initializer -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('studyflow_user_settings');
+          var theme = 'system';
+          var accent = 'blue';
+          if (saved) {
+            var parsed = JSON.parse(saved);
+            theme = parsed.theme || (parsed.darkMode !== undefined ? (parsed.darkMode ? 'dark' : 'light') : 'system');
+            if (parsed.primaryColor) {
+              accent = parsed.primaryColor;
+            }
+          }
+          if (theme === 'system' || !theme) {
+            theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          var root = document.documentElement;
+          if (theme === 'dark') {
+            root.classList.add('dark');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+          }
+          root.setAttribute('data-accent', accent);
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="overflow-y-scroll overflow-x-hidden">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>

@@ -33,6 +33,7 @@ import {
 import { UserSettings } from '../types';
 import { TimeWheelPicker } from './TimeWheelPicker';
 import { ThemeMode, PrimaryAccentColor, applyTheme, applyAccentColor } from '../utils/themeManager';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface SettingsModalProps {
   settings: UserSettings;
@@ -65,6 +66,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onImportTrigger,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const { canInstall, isInstalled, installPWA } = usePWAInstall();
 
   // Form states
   const [dailyTarget, setDailyTarget] = useState(settings.dailyTarget || 10);
@@ -762,52 +764,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       {[
                         {
                           id: 'blue',
-                          label: 'Blue',
+                          label: 'Electric Blue',
                           color: '#2563EB',
                           borderClass: 'border-[#2563EB]',
                           ringClass: 'ring-[#2563EB]/20',
                         },
                         {
-                          id: 'purple',
-                          label: 'Purple',
-                          color: '#8B5CF6',
-                          borderClass: 'border-[#8B5CF6]',
-                          ringClass: 'ring-[#8B5CF6]/20',
+                          id: 'green',
+                          label: 'Emerald Green',
+                          color: '#059669',
+                          borderClass: 'border-[#059669]',
+                          ringClass: 'ring-[#059669]/20',
                         },
                         {
-                          id: 'green',
-                          label: 'Green',
-                          color: '#10B981',
-                          borderClass: 'border-[#10B981]',
-                          ringClass: 'ring-[#10B981]/20',
+                          id: 'purple',
+                          label: 'Indigo Purple',
+                          color: '#7C3AED',
+                          borderClass: 'border-[#7C3AED]',
+                          ringClass: 'ring-[#7C3AED]/20',
                         },
                         {
                           id: 'orange',
-                          label: 'Orange',
-                          color: '#EA580C',
-                          borderClass: 'border-[#EA580C]',
-                          ringClass: 'ring-[#EA580C]/20',
-                        },
-                        {
-                          id: 'pink',
-                          label: 'Pink',
-                          color: '#F43F5E',
-                          borderClass: 'border-[#F43F5E]',
-                          ringClass: 'ring-[#F43F5E]/20',
-                        },
-                        {
-                          id: 'cyan',
-                          label: 'Cyan',
-                          color: '#06B6D4',
-                          borderClass: 'border-[#06B6D4]',
-                          ringClass: 'ring-[#06B6D4]/20',
+                          label: 'Crimson Red',
+                          color: '#DC2626',
+                          borderClass: 'border-[#DC2626]',
+                          ringClass: 'ring-[#DC2626]/20',
                         },
                         {
                           id: 'amber',
-                          label: 'Amber',
-                          color: '#F59E0B',
-                          borderClass: 'border-[#F59E0B]',
-                          ringClass: 'ring-[#F59E0B]/20',
+                          label: 'Amber Gold',
+                          color: '#D97706',
+                          borderClass: 'border-[#D97706]',
+                          ringClass: 'ring-[#D97706]/20',
+                        },
+                        {
+                          id: 'pink',
+                          label: 'Rose Pink',
+                          color: '#E11D48',
+                          borderClass: 'border-[#E11D48]',
+                          ringClass: 'ring-[#E11D48]/20',
+                        },
+                        {
+                          id: 'cyan',
+                          label: 'Cyan Ocean',
+                          color: '#0891B2',
+                          borderClass: 'border-[#0891B2]',
+                          ringClass: 'ring-[#0891B2]/20',
                         },
                       ].map((opt) => {
                         const isSelected = primaryColor === opt.id;
@@ -1058,18 +1060,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   transition={{ duration: 0.15 }}
                   className="space-y-5"
                 >
-                  <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center gap-4">
-                    <div className="preserve-color relative w-11 h-11 flex items-center justify-center shrink-0">
-                      <div className="absolute top-0 left-0 w-8 h-8 bg-[#2563EB] rounded-[7px]"></div>
-                      <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#6366F1]/90 backdrop-blur-[2px] rounded-[7px] mix-blend-multiply dark:mix-blend-screen dark:opacity-90"></div>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/10 rounded-xl flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-4">
+                      <div className="preserve-color relative w-11 h-11 flex items-center justify-center shrink-0">
+                        <div className="absolute top-0 left-0 w-8 h-8 bg-[#2563EB] rounded-[7px]"></div>
+                        <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#6366F1]/90 backdrop-blur-[2px] rounded-[7px] mix-blend-multiply dark:mix-blend-screen dark:opacity-90"></div>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight">Study Flow Pro</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Version 4.2.0 (PWA Ready)</p>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200/70 dark:border-emerald-800/50 mt-1.5">
+                          <ShieldCheck className="w-3 h-3" /> {isInstalled ? 'App Installed & Offline Ready' : 'PWA & Offline Storage Active'}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 leading-tight">Study Flow Pro</h4>
-                      <p className="text-xs text-slate-500 font-medium mt-0.5">Version 4.2.0 (Build 2026.08)</p>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200/70 mt-1.5">
-                        <ShieldCheck className="w-3 h-3" /> PWA & Offline Storage Active
-                      </span>
-                    </div>
+
+                    {canInstall && (
+                      <button
+                        type="button"
+                        onClick={installPWA}
+                        className="px-3.5 py-2 bg-[#2563EB] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-blue-500/25 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Install App to Desktop
+                      </button>
+                    )}
                   </div>
 
                   <div className="p-4 bg-white border border-slate-200/80 rounded-xl space-y-2 text-xs text-slate-600 leading-relaxed font-medium">

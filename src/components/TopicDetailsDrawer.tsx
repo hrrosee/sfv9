@@ -3,6 +3,7 @@ import {
   motion,
   AnimatePresence
 } from 'motion/react';
+import { getLocalDateString } from '../utils/dateUtils';
 import {
   X,
   Pin,
@@ -781,26 +782,43 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
     el.style.height = 'auto';
     const scrollH = el.scrollHeight;
 
-    // Calculate available space above virtual keyboard
-    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const formEl = el.closest('form');
+    const isMobileDevice = typeof window !== 'undefined' && (window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024));
 
-    let maxAllowedHeight = 360; // Desktop default limit
-    if (formEl) {
-      const formRect = formEl.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      // Distance from top of textarea to bottom of form (including buttons and padding ~ 44px)
-      const buttonsAndPaddingHeight = formRect.bottom - elRect.bottom;
-      // Max height = viewportHeight - keyboardMargin(10px) - topOffsetOfTextarea - buttonsHeight
-      const calculatedMax = viewportHeight - 10 - elRect.top - Math.max(buttonsAndPaddingHeight, 44);
-      if (calculatedMax > 72) {
-        maxAllowedHeight = calculatedMax;
+    if (!isMobileDevice) {
+      // Desktop: Max 8 lines limit, smoothly auto-expanding as user types
+      const computed = window.getComputedStyle(el);
+      const lineHeight = parseFloat(computed.lineHeight) || 24;
+      const padTop = parseFloat(computed.paddingTop) || 12;
+      const padBottom = parseFloat(computed.paddingBottom) || 12;
+      const borderTop = parseFloat(computed.borderTopWidth) || 1;
+      const borderBottom = parseFloat(computed.borderBottomWidth) || 1;
+      const max8LinesHeight = Math.round(lineHeight * 8 + padTop + padBottom + borderTop + borderBottom);
+
+      const finalHeight = Math.max(72, Math.min(scrollH, max8LinesHeight));
+      el.style.height = `${finalHeight}px`;
+      el.style.overflowY = scrollH > max8LinesHeight ? 'auto' : 'hidden';
+    } else {
+      // Mobile: Adaptive space calculation to ensure Save & Cancel buttons NEVER hide under virtual keyboard (100% untouched)
+      const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const formEl = el.closest('form');
+
+      let maxAllowedHeight = 360;
+      if (formEl) {
+        const formRect = formEl.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        // Distance from top of textarea to bottom of form (including buttons and padding ~ 44px)
+        const buttonsAndPaddingHeight = formRect.bottom - elRect.bottom;
+        // Max height = viewportHeight - keyboardMargin(10px) - topOffsetOfTextarea - buttonsHeight
+        const calculatedMax = viewportHeight - 10 - elRect.top - Math.max(buttonsAndPaddingHeight, 44);
+        if (calculatedMax > 72) {
+          maxAllowedHeight = calculatedMax;
+        }
       }
-    }
 
-    const finalHeight = Math.max(72, Math.min(scrollH, maxAllowedHeight));
-    el.style.height = `${finalHeight}px`;
-    el.style.overflowY = scrollH > maxAllowedHeight ? 'auto' : 'hidden';
+      const finalHeight = Math.max(72, Math.min(scrollH, maxAllowedHeight));
+      el.style.height = `${finalHeight}px`;
+      el.style.overflowY = scrollH > maxAllowedHeight ? 'auto' : 'hidden';
+    }
   };
 
   // Auto-expand Description textarea whenever opened or input changes
@@ -1729,7 +1747,6 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
     timerStartTimeRef.current = null;
     setTimerSeconds(totalSec);
     setIsTimerPaused(true);
-    showToast?.('Timer paused ⏸️');
   };
 
   const handleResumeTimer = () => {
@@ -1741,7 +1758,6 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
     if (!activeTimerTaskId || !isTimerPaused) return;
     timerStartTimeRef.current = Date.now();
     setIsTimerPaused(false);
-    showToast?.('Timer resumed ▶️ Keep it up!');
   };
 
   const handleStopTimer = (taskId: string) => {
@@ -1811,7 +1827,6 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
         timerStartTimeRef.current = Date.now();
         setIsTimerPaused(false);
       }
-      showToast?.('Awesome! Timer resumed 🚀 Keep it up!');
     }
     activeMilestonePromptRef.current = null;
   };
@@ -1925,7 +1940,12 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
 
   const updateTaskDueDate = (dueDate: string | undefined) => {
     if (!topic || !activeTask) return;
-    const updatedTask: TaskItem = { ...activeTask, dueDate };
+    const updatedTask: TaskItem = { ...activeTask };
+    if (dueDate) {
+      updatedTask.dueDate = dueDate;
+    } else {
+      delete updatedTask.dueDate;
+    }
     onUpdateTask?.(topic.id, updatedTask);
     showToast?.(dueDate ? `Due date set to ${formatDisplayDueDate(dueDate)}` : 'Due date cleared');
     setIsDueDatePickerOpen(false);
@@ -2034,7 +2054,6 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
     const title = newTaskTitle.trim();
     if (!title) return;
     onAddTask?.(topic.id, title);
-    showToast?.(`Task "${title}" added`);
     setNewTaskTitle('');
     setIsAddingTask(false);
   };
@@ -2576,7 +2595,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                             exit={{ opacity: 0, scale: 0.95, y: -4 }}
                             transition={{ duration: 0.12, ease: 'easeOut' }}
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-8 sm:top-9 z-[9999999] w-48 overflow-hidden rounded-xl border border-slate-200/90 bg-white py-1.5 shadow-2xl shadow-slate-900/20"
+                            className="absolute right-0 top-8 sm:top-9 z-[9999999] w-48 overflow-hidden rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 shadow-2xl shadow-slate-900/20 dark:shadow-black/50 select-none text-slate-700 dark:text-slate-200"
                           >
                             {/* 1. Rename */}
                             <button
@@ -2589,9 +2608,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   renameTopic();
                                 }
                               }}
-                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                             >
-                              <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <Pencil className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                               <span className="truncate">Rename</span>
                             </button>
 
@@ -2603,9 +2622,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   setTopicMenuOpen(false);
                                   onOpenCustomizer();
                                 }}
-                                className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                                className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                               >
-                                <Palette className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                <Palette className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 shrink-0" />
                                 <span className="truncate">Customize Icon & Color</span>
                               </button>
                             )}
@@ -2621,9 +2640,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   showToast('Opened Merge Topic dialog');
                                 }
                               }}
-                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                             >
-                              <CornerUpRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <CornerUpRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                               <span className="truncate">Merge Topic</span>
                             </button>
 
@@ -2638,9 +2657,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   showToast('Opened Move to Section dialog');
                                 }
                               }}
-                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                             >
-                              <FolderOutput className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <FolderOutput className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                               <span className="truncate">Move to section</span>
                             </button>
 
@@ -2655,13 +2674,13 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   showToast('Topic duplicated successfully');
                                 }
                               }}
-                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                             >
-                              <Copy className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <Copy className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
                               <span className="truncate">Duplicate</span>
                             </button>
 
-                            <div className="my-1 border-t border-slate-100" />
+                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
                             {/* 5. Move to Bin */}
                             <button
@@ -2670,9 +2689,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                 setTopicMenuOpen(false);
                                 deleteTopic();
                               }}
-                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-rose-600 hover:bg-rose-50"
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300"
                             >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <Trash2 className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 shrink-0" />
                               <span className="truncate">Move to Bin</span>
                             </button>
                           </motion.div>
@@ -2872,18 +2891,15 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                             className="flex items-center gap-2 hover:text-slate-900 transition-colors cursor-pointer"
                           >
                             <div
-                              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isAllFilteredSelected
-                                ? 'bg-[#176BFF] text-white'
-                                : selectedTaskIds.length > 0
-                                  ? 'bg-slate-100 text-[#176BFF]'
-                                  : 'border-slate-300 hover:border-slate-400 bg-white'
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isAllFilteredSelected || selectedTaskIds.length > 0
+                                ? 'bg-[#176BFF] border-[#176BFF] text-white'
+                                : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 bg-white dark:bg-slate-800'
                                 }`}
-                              style={{ borderColor: isAllFilteredSelected ? '#176BFF' : selectedTaskIds.length > 0 ? '#176BFF' : undefined }}
                             >
                               {isAllFilteredSelected ? (
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
                               ) : selectedTaskIds.length > 0 ? (
-                                <div className="w-2 h-0.5 bg-[#176BFF] rounded-full" />
+                                <div className="w-2 h-0.5 bg-white rounded-full" />
                               ) : null}
                             </div>
                             <span className="text-xs font-bold text-slate-700">
@@ -3031,14 +3047,13 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   <button
                                     type="button"
                                     onClick={(e) => toggleSelectTask(t.id, e, idx)}
-                                    className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center cursor-pointer ${selectedTaskIds.includes(t.id)
-                                      ? 'bg-[#176BFF] text-white'
-                                      : 'border-slate-300 hover:border-slate-400 bg-white'
+                                    className={`w-4 h-4 rounded border shrink-0 flex items-center justify-center cursor-pointer transition-colors ${selectedTaskIds.includes(t.id)
+                                      ? 'bg-[#176BFF] border-[#176BFF] text-white'
+                                      : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 bg-white dark:bg-slate-800'
                                       }`}
-                                    style={{ borderColor: selectedTaskIds.includes(t.id) ? '#176BFF' : undefined }}
                                     title="Select task for bulk actions"
                                   >
-                                    {selectedTaskIds.includes(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                                    {selectedTaskIds.includes(t.id) && <Check className="w-3 h-3 stroke-[3] text-white" />}
                                   </button>
                                 </motion.div>
 
@@ -3541,7 +3556,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                 <div className="flex flex-col min-w-0 text-left flex-1">
                                   <div className="flex items-center justify-between gap-1">
                                     <span className="text-[10px] sm:text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-tight text-left whitespace-nowrap">Due Date</span>
-                                    {dueDateStatus && (
+                                    {dueDateStatus && useTwoByTwoGrid && (
                                       <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full border leading-tight shrink-0 ${dueDateStatus.color}`}>
                                         {dueDateStatus.label}
                                       </span>
@@ -3555,7 +3570,9 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                         : 'text-slate-800 dark:text-slate-200'
                                       } leading-tight truncate mt-0.5 text-left`}
                                   >
-                                    {formatDisplayDueDate(activeTask.dueDate)}
+                                    {!useTwoByTwoGrid && dueDateStatus
+                                      ? dueDateStatus.label
+                                      : formatDisplayDueDate(activeTask.dueDate)}
                                   </span>
                                 </div>
                               </button>
@@ -3575,7 +3592,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          const todayStr = new Date().toISOString().slice(0, 10);
+                                          const todayStr = getLocalDateString();
                                           updateTaskDueDate(todayStr);
                                         }}
                                         className="flex-1 py-1.5 px-1 rounded-lg text-[10.5px] font-bold text-slate-700 hover:text-[#176BFF] hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-200 transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
@@ -3587,7 +3604,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                         onClick={() => {
                                           const tomorrow = new Date();
                                           tomorrow.setDate(tomorrow.getDate() + 1);
-                                          updateTaskDueDate(tomorrow.toISOString().slice(0, 10));
+                                          updateTaskDueDate(getLocalDateString(tomorrow));
                                         }}
                                         className="flex-1 py-1.5 px-1 rounded-lg text-[10.5px] font-bold text-slate-700 hover:text-[#176BFF] hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-200 transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
                                       >
@@ -3598,7 +3615,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                         onClick={() => {
                                           const nextWeek = new Date();
                                           nextWeek.setDate(nextWeek.getDate() + 7);
-                                          updateTaskDueDate(nextWeek.toISOString().slice(0, 10));
+                                          updateTaskDueDate(getLocalDateString(nextWeek));
                                         }}
                                         className="flex-1 py-1.5 px-1 rounded-lg text-[10.5px] font-bold text-slate-700 hover:text-[#176BFF] hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-200 transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1"
                                       >
@@ -3829,23 +3846,19 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                   setIsPriorityMenuOpen(false);
                                   setIsConfidenceMenuOpen(false);
                                 }}
-                                className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl ${isTimerRunningOnThisTask
-                                  ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-200/90 dark:border-blue-800/60 text-blue-950 dark:text-blue-200 shadow-2xs'
-                                  : (activeTask.timeSpentMinutes || 0) > 0
-                                    ? 'bg-slate-50/80 dark:bg-slate-900/60 border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 text-slate-900 dark:text-slate-200'
-                                    : 'bg-white/95 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/90 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
-                                  } border shadow-2xs transition-all cursor-pointer min-w-0 w-full overflow-hidden text-left`}
+                                className={`flex items-center gap-2 p-2 sm:p-2.5 rounded-xl ${isTimerRunningOnThisTask || (activeTask.timeSpentMinutes || 0) > 0
+                                  ? 'bg-[#F4F8FF] dark:bg-blue-950/30 border-[#E0EDFF]/80 dark:border-blue-900/40 hover:border-[#176BFF]/30 dark:hover:border-blue-700/50'
+                                  : 'bg-white/95 dark:bg-slate-800/40 border-slate-200/70 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600/60 hover:bg-slate-50/90 dark:hover:bg-slate-800/70'
+                                } border shadow-2xs transition-all cursor-pointer min-w-0 w-full overflow-hidden text-left`}
                                 title="Click to track study time"
                               >
                                 <div
-                                  className={`flex h-7.5 w-7.5 sm:h-8.5 sm:w-8.5 shrink-0 items-center justify-center rounded-lg ${isTimerRunningOnThisTask
-                                    ? 'bg-blue-100 dark:bg-blue-900/50 text-[#176BFF] dark:text-blue-400'
-                                    : (activeTask.timeSpentMinutes || 0) > 0
-                                      ? 'bg-slate-100 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 text-[#176BFF] dark:text-blue-400'
-                                      : 'bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 text-slate-500 dark:text-slate-400'
-                                    }`}
+                                  className={`flex h-7.5 w-7.5 sm:h-8.5 sm:w-8.5 shrink-0 items-center justify-center rounded-lg ${isTimerRunningOnThisTask || (activeTask.timeSpentMinutes || 0) > 0
+                                    ? 'bg-[#E6F0FF] dark:bg-blue-900/40 text-[#176BFF] dark:text-blue-400'
+                                    : 'bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/40 dark:border-slate-700/40 text-slate-500 dark:text-slate-400'
+                                  }`}
                                 >
-                                  <Timer className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isTimerRunningOnThisTask ? 'text-[#176BFF]' : (activeTask.timeSpentMinutes || 0) > 0 ? 'text-[#176BFF] dark:text-blue-400' : ''}`} />
+                                  <Timer className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isTimerRunningOnThisTask || (activeTask.timeSpentMinutes || 0) > 0 ? 'text-[#176BFF] dark:text-blue-400' : ''}`} />
                                 </div>
                                 <div className="flex flex-col min-w-0 text-left flex-1">
                                   <div className="flex items-center justify-between gap-1">
@@ -4251,7 +4264,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
                                 }}
                                 rows={3}
                                 placeholder="Write task description..."
-                                className="w-full p-3 bg-white border border-slate-300 focus:border-[#176BFF] rounded-lg text-slate-800 outline-none focus:outline-none ring-0 focus:ring-0 shadow-none resize-none min-h-[72px] leading-relaxed overflow-hidden desc-font"
+                                className="w-full p-3 bg-white border border-slate-300 focus:border-[#176BFF] rounded-lg text-slate-800 outline-none focus:outline-none ring-0 focus:ring-0 shadow-none resize-none min-h-[72px] leading-relaxed desc-font mac-scrollbar"
                               />
                               <div className="flex items-center justify-end gap-2">
                                 <button

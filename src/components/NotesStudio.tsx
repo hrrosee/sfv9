@@ -788,7 +788,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
         handleUpdateNote(activeNoteRef.current.id, { content: html });
       }
       setIsSaving(false);
-    }, 300);
+    }, 1000);
   };
 
   useEffect(() => {
@@ -2547,8 +2547,8 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
               className="pt-3.5 pb-1 px-4 flex flex-col items-center text-center select-none w-full md:!translate-y-0"
             >
               {/* 1. Gradient Icon Badge */}
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-[#2563EB] to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 mb-2">
-                <NotebookPen className="w-[32px] h-[32px] stroke-[2.2]" />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 mb-2">
+                <NotebookPen className="w-[32px] h-[32px] stroke-[2.2] text-white" />
               </div>
 
               {/* 2. Study Notes Title */}
@@ -2821,7 +2821,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                       setIsMobileNoteEditing(true);
                       setNoteEditorMode('preview');
                     }}
-                    className={`group relative p-[9px] sm:p-[11px] rounded-[9px] flex flex-col gap-[3px] transition-all duration-150 ease-out cursor-pointer select-none border shadow-3xs ${
+                    className={`preserve-color group relative p-[9px] sm:p-[11px] rounded-[9px] flex flex-col gap-[3px] transition-all duration-150 ease-out cursor-pointer select-none border shadow-3xs ${
                       isMenuOpen ? 'z-30' : 'z-0'
                     } ${unselected.base} ${
                       isSelected
@@ -2994,7 +2994,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
             const currentEditorTheme = editorThemeMap[activeTheme] || editorThemeMap.default;
 
             return (
-              <div className={`h-full flex flex-col max-w-[880px] w-full mx-auto md:border-x md:border-slate-200/80 dark:md:border-slate-800 md:shadow-2xs select-text ${currentEditorTheme.container}`}>
+              <div className={`preserve-color h-full flex flex-col max-w-[880px] w-full mx-auto md:border-x md:border-slate-200/80 dark:md:border-slate-800 md:shadow-2xs select-text ${currentEditorTheme.container}`}>
                 {/* Editor Top Toolbar Strip */}
                 <div className={`shrink-0 h-[56px] sm:h-[60px] px-4 sm:px-6 border-b flex items-center justify-between gap-2 z-[999] relative transition-colors duration-150 ${currentEditorTheme.header}`}>
                   <div className="flex items-center gap-2 min-w-0">
@@ -3038,7 +3038,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
 
                   {/* Center: Color Theme Palette Swatch */}
                   <div className="absolute left-1/2 -translate-x-1/2 flex items-center z-10 select-none">
-                    <div className="h-[28px] flex items-center gap-1 px-1.5 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-3xs">
+                    <div className="preserve-color h-[28px] flex items-center gap-1 px-1.5 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 shadow-3xs">
                       {(['default', 'amber', 'blue', 'emerald', 'purple', 'rose'] as const).map(c => {
                         const colorBgMap: Record<string, string> = {
                           default: 'bg-slate-300 hover:bg-slate-400',
@@ -3080,20 +3080,6 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                     >
                       <Pin className={`w-3.5 h-3.5 ${activeNote.isPinned ? 'fill-rose-500 text-rose-500' : ''}`} />
                     </button>
-
-                    {/* Edit Note Button in Preview Mode */}
-                    {noteEditorMode === 'preview' && (
-                      <button
-                        type="button"
-                        onClick={() => setNoteEditorMode('write')}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#2563EB] hover:bg-blue-600 active:scale-95 text-white font-medium text-xs shadow-3xs transition-all cursor-pointer mr-1"
-                        data-tooltip="Edit note"
-                        data-tooltip-side="bottom"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
-                    )}
 
                     {/* Copy Button (Shows green check and feedback when copied, matching note list) */}
                     <button
@@ -3661,42 +3647,45 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                     </div>
                   ) : (
                     <div
-                      className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text"
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        const checkItem = target.closest('.checklist-item');
+                        if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
+                          e.stopPropagation();
+                          const isChecked = checkItem.getAttribute('data-checked') === 'true';
+                          const nextChecked = !isChecked;
+                          checkItem.setAttribute('data-checked', String(nextChecked));
+                          const chkBox = checkItem.querySelector('.chk-box');
+                          const chkText = checkItem.querySelector('.chk-text');
+                          if (chkBox) {
+                            chkBox.className = `chk-box mt-1 w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${nextChecked ? 'bg-[#2563EB] border-[#2563EB] text-white font-bold' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'}`;
+                            chkBox.textContent = nextChecked ? '✓' : '';
+                          }
+                          if (chkText) {
+                            chkText.className = `chk-text flex-1 select-text ${nextChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}`;
+                          }
+                          const updatedHtml = (e.currentTarget.querySelector('.note-preview-content') as HTMLElement || e.currentTarget as HTMLElement).innerHTML;
+                          handleUpdateNote(activeNote.id, { content: updatedHtml });
+                          return;
+                        }
+                        const linkEl = target.closest('a');
+                        if (linkEl) {
+                          e.stopPropagation();
+                          const href = linkEl.getAttribute('href');
+                          if (href) window.open(href, '_blank', 'noopener,noreferrer');
+                          return;
+                        }
+                        // Click anywhere in preview switches to edit mode with auto-focus
+                        setNoteEditorMode('write');
+                        setTimeout(() => {
+                          editorContentRef.current?.focus();
+                        }, 50);
+                      }}
+                      className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 cursor-text select-text"
+                      title="Click anywhere to edit note"
                     >
                       <div
-                        className="space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 select-text"
-                        onClick={(e) => {
-                          const target = e.target as HTMLElement;
-                          const checkItem = target.closest('.checklist-item');
-                          if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
-                            e.stopPropagation();
-                            const isChecked = checkItem.getAttribute('data-checked') === 'true';
-                            const nextChecked = !isChecked;
-                            checkItem.setAttribute('data-checked', String(nextChecked));
-                            const chkBox = checkItem.querySelector('.chk-box');
-                            const chkText = checkItem.querySelector('.chk-text');
-                            if (chkBox) {
-                              chkBox.className = `chk-box mt-1 w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${nextChecked ? 'bg-[#2563EB] border-[#2563EB] text-white font-bold' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'}`;
-                              chkBox.textContent = nextChecked ? '✓' : '';
-                            }
-                            if (chkText) {
-                              chkText.className = `chk-text flex-1 select-text ${nextChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}`;
-                            }
-                            const updatedHtml = (e.currentTarget as HTMLElement).innerHTML;
-                            handleUpdateNote(activeNote.id, { content: updatedHtml });
-                            return;
-                          }
-                          const linkEl = target.closest('a');
-                          if (linkEl) {
-                            e.stopPropagation();
-                            const href = linkEl.getAttribute('href');
-                            if (href) window.open(href, '_blank', 'noopener,noreferrer');
-                            return;
-                          }
-                          if (target.closest('.empty-note-prompt')) {
-                            setNoteEditorMode('write');
-                          }
-                        }}
+                        className="note-preview-content space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 select-text"
                         dangerouslySetInnerHTML={{
                           __html: activeNotePreviewHtml
                         }}
@@ -3839,7 +3828,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                     {/* Color Selector */}
                     <div className="px-2.5 py-1 flex flex-col gap-1">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">Color Theme</span>
-                      <div className="flex items-center gap-1.5">
+                      <div className="preserve-color flex items-center gap-1.5">
                         {(['default', 'amber', 'blue', 'emerald', 'purple', 'rose'] as const).map(c => {
                           const colorBgMap: Record<string, string> = {
                             default: 'bg-slate-300 hover:bg-slate-400',

@@ -540,9 +540,6 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
                   <span className="text-slate-800 dark:text-slate-200 font-semibold">
                     {sortBy === 'recent' ? 'Recent' : 'Old'}
                   </span>
-                  {isCategoryEnabled && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" title="Category Active" />
-                  )}
                   <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${isSortDropdownOpen ? 'rotate-180 text-[#2563EB]' : ''}`} />
                 </button>
 

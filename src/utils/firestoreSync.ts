@@ -23,6 +23,16 @@ export interface StudyFlowCloudData {
 }
 
 /**
+ * Deeply sanitizes an object/array to remove any undefined fields that Firestore rejects
+ */
+function sanitizeForFirestore(data: any): any {
+  if (data === undefined) return null;
+  return JSON.parse(
+    JSON.stringify(data, (key, value) => (value === undefined ? undefined : value))
+  );
+}
+
+/**
  * Save user data to Firestore Cloud Database
  */
 export const saveUserDataToCloud = async (userId: string, data: StudyFlowCloudData) => {
@@ -34,8 +44,9 @@ export const saveUserDataToCloud = async (userId: string, data: StudyFlowCloudDa
       const { theme, ...restSettings } = syncData.userSettings as any;
       syncData.userSettings = restSettings;
     }
+    const cleanSyncData = sanitizeForFirestore(syncData);
     await setDoc(userDocRef, {
-      ...syncData,
+      ...cleanSyncData,
       updatedAt: serverTimestamp()
     }, { merge: true });
   } catch (error) {

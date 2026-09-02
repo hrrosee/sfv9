@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { getLocalDateString } from './utils/dateUtils';
 import {
   Search,
   Command,
@@ -147,7 +148,7 @@ import {
   Droplets,
   Milestone,
   MapPin,
-  Map,
+  Map as LucideMapIcon,
   Layers,
   Presentation,
   Lightbulb as LightbulbIcon,
@@ -301,10 +302,17 @@ import { triggerMiniTaskConfetti, triggerTopicCompleteCelebration } from './util
 import { applyTheme, getInitialTheme, getInitialAccentColor, ThemeMode, resolveEffectiveTheme } from './utils/themeManager';
 import { SmartTopicStudioModal } from './components/SmartTopicStudioModal';
 import { detectLinkType } from './utils/studioMarkdownParser';
+import { GlobalModalsHub } from './components/GlobalModalsHub';
+import { WorkspaceHeader } from './components/WorkspaceHeader';
+import { WorkspaceMetricsBanner } from './components/WorkspaceMetricsBanner';
+import { SmartTopicGeneratorBanner } from './components/SmartTopicGeneratorBanner';
+import { TopicsCanvas } from './components/TopicsCanvas';
+import { AppSidebar } from './components/AppSidebar';
 import { NotesStudio } from './components/NotesStudio';
 import { SearchView } from './components/SearchView';
 import { RecycleBinStudio } from './components/RecycleBinStudio';
 import { TasksStudio } from './components/TasksStudio';
+import { LandingPage } from './components/LandingPage';
 
 // Custom Reorder Workspaces SVG Icon (Up Chevron + Middle Bar + Down Chevron)
 const ReorderWorkspacesIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -749,34 +757,7 @@ export function App() {
     }
   };
 
-  // --- Clock State ---
-  const [timeString, setTimeString] = useState<string>('');
-  const [dateString, setDateString] = useState<string>('');
 
-  useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      setTimeString(
-        now.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: true
-        })
-      );
-      setDateString(
-        now.toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric'
-        })
-      );
-    };
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // --- Workspaces State ---
   const [workspaces, setWorkspaces] = useState<WorkspaceWindow[]>(() =>
@@ -952,14 +933,34 @@ export function App() {
   }, [userSettings.theme, userSettings.primaryColor]);
 
   const ACCENT_COLOR_OPTIONS: Array<{ id: PrimaryAccentColor; label: string; color: string }> = [
-    { id: 'blue', label: 'Blue', color: '#2563EB' },
-    { id: 'purple', label: 'Purple', color: '#8B5CF6' },
-    { id: 'green', label: 'Green', color: '#10B981' },
-    { id: 'orange', label: 'Orange', color: '#EA580C' },
-    { id: 'pink', label: 'Pink', color: '#F43F5E' },
-    { id: 'cyan', label: 'Cyan', color: '#06B6D4' },
-    { id: 'amber', label: 'Amber', color: '#F59E0B' },
+    { id: 'blue', label: 'Electric Blue', color: '#2563EB' },
+    { id: 'green', label: 'Emerald Green', color: '#059669' },
+    { id: 'purple', label: 'Indigo Purple', color: '#7C3AED' },
+    { id: 'orange', label: 'Crimson Red', color: '#DC2626' },
+    { id: 'amber', label: 'Amber Gold', color: '#EA580C' },
+    { id: 'pink', label: 'Rose Pink', color: '#E11D48' },
+    { id: 'cyan', label: 'Cyan Ocean', color: '#0891B2' },
   ];
+
+  const getWorkspaceAmbientGlow = (accent: PrimaryAccentColor | string = 'blue') => {
+    switch (accent) {
+      case 'green':
+        return 'from-emerald-600/18 via-teal-600/[0.08]';
+      case 'purple':
+        return 'from-purple-600/18 via-indigo-600/[0.08]';
+      case 'orange':
+        return 'from-rose-600/18 via-red-600/[0.08]';
+      case 'pink':
+        return 'from-pink-600/18 via-rose-600/[0.08]';
+      case 'cyan':
+        return 'from-cyan-600/18 via-blue-600/[0.08]';
+      case 'amber':
+        return 'from-amber-600/18 via-orange-600/[0.08]';
+      case 'blue':
+      default:
+        return 'from-blue-600/18 via-indigo-600/[0.08]';
+    }
+  };
 
   const [isAccentQuickPickerOpen, setIsAccentQuickPickerOpen] = useState<boolean>(false);
 
@@ -1026,10 +1027,6 @@ export function App() {
     try {
       soundManager?.playClick?.();
     } catch (_) {}
-
-    try {
-      showToast(`Switched to ${newTheme === 'dark' ? 'Dark' : 'Light'} Mode 🌓`);
-    } catch (_) {}
   };
 
   // Close quick accent picker on click outside
@@ -1059,18 +1056,39 @@ export function App() {
   const [latestMilestoneInfo, setLatestMilestoneInfo] = useState<{ isMilestone: boolean; title?: string; icon?: string }>({ isMilestone: false });
   const previousGoalAchievedRef = useRef<boolean>(false);
 
-  // Periodic and on-focus rollover check for midnight streak tracking
+  // Exact Target Midnight Timeout + Visibility / Focus checks
   useEffect(() => {
-    const checkRollover = () => {
+    let timerId: ReturnType<typeof setTimeout>;
+
+    const scheduleMidnightCheck = () => {
+      const now = new Date();
+      const nextMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0, 0, 1
+      );
+      const msUntilMidnight = Math.max(1000, nextMidnight.getTime() - now.getTime());
+
+      timerId = setTimeout(() => {
+        setStreakData(loadStreakData());
+        scheduleMidnightCheck();
+      }, msUntilMidnight);
+    };
+
+    scheduleMidnightCheck();
+
+    const handleVisibilityOrFocus = () => {
       setStreakData(loadStreakData());
     };
-    const interval = setInterval(checkRollover, 60000);
-    window.addEventListener('focus', checkRollover);
-    document.addEventListener('visibilitychange', checkRollover);
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', checkRollover);
-      document.removeEventListener('visibilitychange', checkRollover);
+      clearTimeout(timerId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
   }, []);
 
@@ -1094,7 +1112,13 @@ export function App() {
   }, [workspaceSections]);
 
   const currentWorkspaceSections = useMemo(() => {
-    return workspaceSections.filter(s => s.workspaceId === activeWorkspaceId);
+    return (workspaceSections || [])
+      .filter(s => s && s.workspaceId === activeWorkspaceId)
+      .map(s => ({
+        id: s.id || `section-${s.name || 'sec'}-${s.workspaceId || 'ws'}`,
+        name: s.name || 'Section',
+        workspaceId: s.workspaceId || activeWorkspaceId,
+      }));
   }, [workspaceSections, activeWorkspaceId]);
 
   // --- Global Active Study Timer Session (Persists seamlessly across navigation, page reloads, and accidental tab closures) ---
@@ -1355,7 +1379,6 @@ export function App() {
     };
     setActiveStudyTimer(pausedSession);
     saveTimerToStorage(pausedSession, null, totalSec);
-    showToast('Timer paused ⏸️');
   };
 
   const handleResumeGlobalStudyTimer = () => {
@@ -1376,7 +1399,6 @@ export function App() {
 
     activeMilestonePromptRef.current = null;
     setIsGlobalStillStudyingOpen(false);
-    showToast('Awesome! Timer resumed 🚀 Keep it up!');
   };
 
   const handleStopAndLogGlobalStudyTimer = (targetTaskId?: string) => {
@@ -1610,7 +1632,15 @@ export function App() {
     undoAction?: () => void;
     duration?: number;
   }
-  const [toastData, setToastData] = useState<ToastData | null>(null);
+  interface ToastItem extends ToastData {
+    id: string;
+  }
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const setToastData = (t: ToastData | null) => {
+    if (t && t.message) {
+      showToast(t.message, t.undoAction, t.duration);
+    }
+  };
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => [
     { id: 'notif-1', title: 'Welcome to StudyFlow Workspace!', time: 'Just now', read: false, type: 'system', description: 'Your focus dashboard and topic tracker are active.' },
     { id: 'notif-2', title: 'Focus Check-in Timer Ready ⏱️', time: '5m ago', read: false, type: 'focus', description: 'Interval milestone alerts will keep your study sessions sharp.' }
@@ -1733,7 +1763,25 @@ export function App() {
 
   const showToast = (message: string, undoAction?: () => void, duration?: number) => {
     const effectiveDuration = duration !== undefined ? duration : (undoAction ? 6000 : 3500);
-    setToastData({ message, undoAction, duration: effectiveDuration });
+    const newId = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newToast: ToastItem = {
+      id: newId,
+      message,
+      undoAction,
+      duration: effectiveDuration,
+    };
+
+    setToasts((prev) => [...prev, newToast].slice(-4));
+
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== newId));
+    }, effectiveDuration);
+
+    // Exclude transient timer pause/resume events from polluting the notification panel history
+    const isExcludedFromPanel = /timer paused|timer resumed/i.test(message);
+    if (isExcludedFromPanel) {
+      return;
+    }
 
     const now = new Date();
     const formattedTime = now.toLocaleTimeString('en-US', {
@@ -1755,22 +1803,22 @@ export function App() {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  useEffect(() => {
-    if (!toastData) return;
-    const timer = setTimeout(() => {
-      setToastData(null);
-    }, toastData.duration || 6000);
-    return () => clearTimeout(timer);
-  }, [toastData]);
-
-  // Safe initial topics loader from localStorage
+  // Safe initial topics loader from localStorage with deduplication
   const loadInitialTopics = (): Topic[] => {
     try {
       const saved = localStorage.getItem('studyflow_topics');
       if (!saved) return [];
       const parsed = JSON.parse(saved);
       if (!Array.isArray(parsed)) return [];
-      return parsed;
+      const seen = new Set<string>();
+      const unique: Topic[] = [];
+      for (const t of parsed) {
+        if (t && t.id && !seen.has(t.id)) {
+          seen.add(t.id);
+          unique.push(t);
+        }
+      }
+      return unique;
     } catch {
       return [];
     }
@@ -2073,9 +2121,24 @@ export function App() {
   const [isStatusFilterDropdownOpen, setIsStatusFilterDropdownOpen] = useState<boolean>(false);
   const [mobileKeyboardBottomInset, setMobileKeyboardBottomInset] = useState<number>(0);
 
-  // --- Firebase Authentication States ---
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  // --- Firebase Authentication States (Instant Fast-First Cache) ---
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(() => {
+    try {
+      const cached = localStorage.getItem('studyflow_cached_user');
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch {}
+    return null;
+  });
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('studyflow_cached_user');
+      return !cached;
+    } catch {
+      return true;
+    }
+  });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [profileMenuTarget, setProfileMenuTarget] = useState<'header' | 'sidebar' | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState<boolean>(false);
@@ -2565,11 +2628,29 @@ export function App() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, [isStatusFilterDropdownOpen]);
 
-  // Listen to Firebase Auth State Changes
+  // Listen to Firebase Auth State Changes & Persist Cached Profile
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setIsAuthChecking(false);
+      if (user) {
+        setIsAuthModalOpen(false);
+      }
+      try {
+        if (user) {
+          localStorage.setItem(
+            'studyflow_cached_user',
+            JSON.stringify({
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName,
+              photoURL: user.photoURL,
+            })
+          );
+        } else {
+          localStorage.removeItem('studyflow_cached_user');
+        }
+      } catch {}
     });
     return () => unsubscribe();
   }, []);
@@ -2601,7 +2682,14 @@ export function App() {
 
   const handleSignOut = async () => {
     setProfileMenuTarget(null);
+    try {
+      localStorage.removeItem('studyflow_cached_user');
+      if (typeof document !== 'undefined') {
+        document.documentElement.removeAttribute('data-accent');
+      }
+    } catch {}
     await logoutUser();
+    setCurrentUser(null);
     setToastData({ message: 'Signed out successfully.' });
   };
 
@@ -2864,9 +2952,18 @@ export function App() {
     return workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0] || { id: '1', name: 'Workspace' };
   }, [workspaces, activeWorkspaceId]);
 
-  // --- Filtered Topics for Active Workspace & Active Section ---
+  // --- Filtered Topics for Active Workspace & Active Section (Guaranteed Unique) ---
   const currentWorkspaceTopics = useMemo(() => {
-    return syncedTopics.filter(t => t.workspaceId === activeWorkspaceId);
+    const rawList = syncedTopics.filter(t => t.workspaceId === activeWorkspaceId);
+    const seen = new Set<string>();
+    const unique: Topic[] = [];
+    for (const t of rawList) {
+      if (t && t.id && !seen.has(t.id)) {
+        seen.add(t.id);
+        unique.push(t);
+      }
+    }
+    return unique;
   }, [syncedTopics, activeWorkspaceId]);
 
   const filteredTopics = useMemo(() => {
@@ -3322,7 +3419,7 @@ export function App() {
         case 'dices': return Dices;
 
         // 7 & 8. বাংলাদেশ ও আন্তর্জাতিক বিষয়াবলি
-        case 'map': return Map;
+        case 'map': return LucideMapIcon;
         case 'mappinned': return MapPinned;
         case 'landmark': return Landmark;
         case 'flag': return Flag;
@@ -3499,39 +3596,26 @@ export function App() {
     }
 
     // 5. গণিত / Mathematics
-    if (['গণিত', 'math', 'mathematics', 'পাটিগণিত', 'বাস্তব সংখ্যা', 'লসাগু', 'গসাগু', 'শতকরা', 'লাভ-ক্ষতি', 'লাভ ক্ষতি', 'মুনাফা', 'অনুপাত', 'সমানুপাত', 'ভগ্নাংশ', 'দশমিক', 'ঐকিক নিয়ম', 'ঐকিক নিয়ম', 'কাজ ও সময়', 'কাজ ও সময়', 'নল ও চৌবাচ্চা', 'গতি ও দূরত্ব', 'নৌকা ও স্রোত', 'নৌকা', 'স্রোত', 'ট্রেন', 'বীজগণিত', 'সূচক', 'লগারিদম', 'ধারা', 'সমান্তর ধারা', 'গুণোত্তর ধারা', 'দ্বিপদী', 'সমীকরণ', 'অসমতা', 'ফাংশন', 'সেট', 'জ্যামিতি', 'রেখা', 'কোণ', 'ত্রিভুজ', 'চতুর্ভুজ', 'বৃত্ত', 'পিথাগোরাস', 'পরিমিতি', 'ত্রিকোণমিতি', 'বিন্যাস', 'সমাবেশ', 'সম্ভাবনা', 'পরিসংখ্যান', 'calculus', 'algebra', 'geometry', 'triangle', 'percent'].some(k => t.includes(k))) {
-      if (['ত্রিভুজ', 'কোণ', 'geometry', 'triangle'].some(k => t.includes(k))) return { ...baseColor, icon: Triangle };
-      if (['শতকরা', 'লাভ-ক্ষতি', 'লাভ ক্ষতি', 'মুনাফা', 'percentage'].some(k => t.includes(k))) return { ...baseColor, icon: Percent };
-      if (['অনুপাত', 'ভগ্নাংশ', 'divide', 'ratio'].some(k => t.includes(k))) return { ...baseColor, icon: Divide };
-      if (['ট্রেন', 'train'].some(k => t.includes(k))) return { ...baseColor, icon: Train };
-      if (['নৌকা', 'স্রোত', 'boat', 'stream'].some(k => t.includes(k))) return { ...baseColor, icon: Ship };
-      if (['নল ও চৌবাচ্চা', 'চৌবাচ্চা', 'pipe'].some(k => t.includes(k))) return { ...baseColor, icon: Droplets };
-      if (['ধারা', 'সমষ্টি', 'sigma'].some(k => t.includes(k))) return { ...baseColor, icon: Sigma };
-      if (['সূচক', 'করণী', 'মূল', 'রুট', 'radical'].some(k => t.includes(k))) return { ...baseColor, icon: Radical };
-      if (['লগারিদম', 'পাই', 'pi'].some(k => t.includes(k))) return { ...baseColor, icon: Pi };
+    if (['গণিত', 'math', 'mathematics', 'পাটিগণিত', 'বাস্তব সংখ্যা', 'লসাগু', 'গসাগু', 'শতকরা', 'লাভ-ক্ষতি', 'লাভ ক্ষতি', 'মুনাফা', 'অনুপাত', 'সমানুপাত', 'ভগ্নাংশ', 'দশমিক', 'ঐকিক নিয়ম', 'ঐকিক নিয়ম', 'কাজ ও সময়', 'কাজ ও সময়', 'নল ও চৌবাচ্চা', 'গতি ও দূরত্ব', 'নৌকা ও স্রোত', 'নৌকা', 'স্রোত', 'ট্রেন', 'বীজগণিত', 'সূচক', 'লগারিদম', 'ধারা', 'সমান্তর ধারা', 'গুণোত্তর ধারা', 'দ্বিপদী', 'সমীকরণ', 'অসমতা', 'ফাংশন', 'সেট', 'বিন্যাস', 'সমাবেশ', 'সম্ভাবনা', 'জ্যামিতি', 'কোণ', 'ত্রিভুজ', 'চতুর্ভুজ', 'বৃত্ত', 'পরিমিতি', 'ত্রিকোণমিতি', 'ক্যালকুলাস', 'স্থানাঙ্ক জ্যামিতি'].some(k => t.includes(k))) {
       const mathIcons = [Calculator, Sigma, Radical, Pi, Percent, Divide, SquareFunction, Equal, Variable, Binary, ChartNoAxesColumn];
       return { ...baseColor, icon: mathIcons[Math.abs(hash) % mathIcons.length] };
     }
 
     // 6. মানসিক দক্ষতা / Mental Ability
-    if (['মানসিক দক্ষতা', 'mental ability', 'reasoning', 'ভাষাগত যৌক্তিক', 'রক্ত সম্পর্ক', 'দিক নির্ণয়', 'দিক নির্ণয়', 'ঘড়ি', 'ঘড়ি', 'ক্যালেন্ডার', 'বয়স', 'বয়স', 'গাণিতিক যুক্তি', 'সংখ্যা ও বর্ণ সিরিজ', 'কোডিং', 'ডিকোডিং', 'অনুরূপ সম্পর্ক', 'স্থানিক সম্পর্ক', 'চিত্র', 'প্রতিবিম্ব', 'ঘনক', 'পাশা', 'কাগজ ভাঁজ', 'যান্ত্রিক যুক্তি', 'স্থানাঙ্ক সম্পর্ক', 'সাদৃশ্য', 'শ্রেণিবিন্যাস', 'ধাঁধা', 'বিশ্লেষণাত্মক', 'সিলোজিজম', 'ভেনচিত্র', 'puzzle'].some(k => t.includes(k))) {
-      if (['ঘনক', 'পাশা', 'cube', 'dice'].some(k => t.includes(k))) return { ...baseColor, icon: Box };
-      if (['রক্ত সম্পর্ক', 'blood relation'].some(k => t.includes(k))) return { ...baseColor, icon: Users };
-      if (['দিক নির্ণয়', 'দিক নির্ণয়', 'direction', 'compass'].some(k => t.includes(k))) return { ...baseColor, icon: Compass };
-      if (['ঘড়ি', 'ঘড়ি', 'ক্যালেন্ডার', 'বয়স', 'বয়স', 'clock', 'timer', 'calendar'].some(k => t.includes(k))) return { ...baseColor, icon: Timer };
+    if (['মানসিক দক্ষতা', 'mental ability', 'যুক্তি', 'লজিক', 'logic', 'ধাঁধা', 'পাজল', 'puzzle', 'চিত্র', 'ঘড়ি', 'ঘড়ির কাঁটা', 'ক্যালেন্ডার', 'দিক নির্ণয়', 'দিক নির্ণয়', 'রক্তের সম্পর্ক', 'সম্পর্ক', 'কোডিং', 'ডিকোডিং', 'অনুরূপ', 'সাদৃশ্য', 'সিরিজ', 'সংখ্যা শ্রেণি', 'অক্ষর শ্রেণি', 'দর্পণ', 'প্রতিবিম্ব', 'ঘনক', 'আইকিউ', 'iq'].some(k => t.includes(k))) {
       const mentalIcons = [Brain, BrainCircuit, Puzzle, Lightbulb, Blocks, Route, Network, ScanSearch, Workflow, GitBranch, Shapes, Waypoints];
       return { ...baseColor, icon: mentalIcons[Math.abs(hash) % mentalIcons.length] };
     }
 
     // 7. বাংলাদেশ বিষয়াবলি (Bangladesh Affairs)
     if (['বাংলাদেশ বিষয়াবলি', 'বাংলাদেশ বিষয়াবলি', 'বাংলাদেশ', 'bangladesh', 'প্রাচীন বাংলার ইতিহাস', 'জনপদ', 'মৌর্য', 'গুপ্ত', 'শশাঙ্ক', 'পাল বংশ', 'সেন বংশ', 'সুলতানি আমল', 'মুঘল আমল', 'নবাবী আমল', 'ব্রিটিশ শাসন', 'পলাশীর যুদ্ধ', 'সিপাহি বিদ্রোহ', 'বঙ্গভঙ্গ', 'পাকিস্তান আমল', 'ভাষা আন্দোলন', 'যুক্তফ্রন্ট', 'ছয় দফা', '৬ দফা', 'গণঅভ্যুত্থান', '৭০ এর নির্বাচন', 'ঐতিহাসিক স্থান', 'প্রত্নতাত্ত্বিক', 'সীমানা', 'ছিটমহল', 'সমুদ্রসীমা', 'আদমশুমারি', 'জনশুমারি', 'উপজাতি', 'ক্ষুদ্র নৃগোষ্ঠী', 'জাতীয় প্রতীক'].some(k => t.includes(k))) {
-      const bdIcons = [Map, MapPinned, Landmark, Flag, Building2, Scale, BadgeCheck, ScrollText, Users, Factory, Wheat];
+      const bdIcons = [LucideMapIcon, MapPinned, Landmark, Flag, Building2, Scale, BadgeCheck, ScrollText, Users, Factory, Wheat];
       return { ...baseColor, icon: bdIcons[Math.abs(hash) % bdIcons.length] };
     }
 
     // 8. আন্তর্জাতিক বিষয়াবলি (International Affairs)
     if (['আন্তর্জাতিক বিষয়াবলি', 'আন্তর্জাতিক বিষয়াবলি', 'আন্তর্জাতিক', 'international affairs', 'বিশ্ব রাজনীতি', 'ভূ-রাজনীতি', 'geopolitics', 'জাতিসংঘ', 'united nations', 'সাধারণ পরিষদ', 'নিরাপত্তা পরিষদ', 'আন্তর্জাতিক সংস্থা', 'আঞ্চলিক সংস্থা', 'সার্ক', 'আসিয়ান', 'ন্যাটো', 'ব্রিকস', 'ইউপিপিপি', 'বিশ্বব্যাংক', 'আন্তর্জাতিক চুক্তি', 'সম্মেলন', 'প্রথম বিশ্বযুদ্ধ', 'দ্বিতীয় বিশ্বযুদ্ধ', 'স্নায়ুযুদ্ধ', 'উপসাগরীয় যুদ্ধ', 'প্রণালী', 'খাল', 'দ্বীপ', 'উপদ্বীপ', 'সীমান্ত রেখা', 'বিরোধপূর্ণ অঞ্চল', 'নোবেল পুরস্কার', 'বিশ্বের বৃহত্তম'].some(k => t.includes(k))) {
-      const intlIcons = [Globe, Earth, Landmark, Flag, Handshake, Plane, Map, Ship, Languages, Network, Building];
+      const intlIcons = [Globe, Earth, Landmark, Flag, Handshake, Plane, LucideMapIcon, Ship, Languages, Network, Building];
       return { ...baseColor, icon: intlIcons[Math.abs(hash) % intlIcons.length] };
     }
 
@@ -3549,7 +3633,7 @@ export function App() {
 
     // 11. ভূগোল (Geography)
     if (['ভূগোল', 'geography', 'বাংলাদেশের ভূগোল', 'ভূ-প্রকৃতি', 'পাহাড়', 'সমভূমি', 'বদ্বীপ', 'নদ-নদী', 'হাওর', 'বিল', 'ঝরনা', 'জলপ্রপাত', 'দ্বীপ', 'চর', 'সাগর', 'উপসাগর', 'বঙ্গোপসাগর', 'বিশ্ব ভূগোল', 'মহাদেশ', 'মহাসাগর', 'পর্বতমালা', 'মরুভূমি', 'নদী ও জলপ্রপাত', 'অক্ষাংশ', 'দ্রাঘিমাংশ', 'প্রতিপাদ স্থান', 'স্থানীয় সময়', 'প্রমাণ সময়', 'বায়ুমণ্ডল', 'বায়ুপ্রবাহ', 'বায়ুচাপ', 'বারিমণ্ডল', 'সমুদ্রস্রোত', 'জোয়ার-ভাটা', 'অশ্মমণ্ডল', 'শিলা', 'খনিজ'].some(k => t.includes(k))) {
-      const geoIcons = [Earth, Globe, Map, MapPinned, Mountain, Waves, Compass, Navigation, Trees, Sun, Cloud];
+      const geoIcons = [Earth, Globe, LucideMapIcon, MapPinned, Mountain, Waves, Compass, Navigation, Trees, Sun, Cloud];
       return { ...baseColor, icon: geoIcons[Math.abs(hash) % geoIcons.length] };
     }
 
@@ -3561,6 +3645,78 @@ export function App() {
 
     // 13. দুর্যোগ ব্যবস্থাপনা (Disaster Management)
     if (['দুর্যোগ ব্যবস্থাপনা', 'disaster management', 'দুর্যোগের ধরন', 'প্রাকৃতিক দুর্যোগ', 'মানব সৃষ্ট দুর্যোগ', 'ঘূর্ণিঝড়', 'সাইক্লোন', 'বন্যা', 'খরা', 'নদীভাঙন', 'ভূমিকম্প', 'সুনামি', 'ভূমিধস', 'বজ্রপাত', 'জলোচ্ছ্বাস', 'পূর্বপ্রস্তুতি', 'সাড়া প্রদান', 'উদ্ধার', 'ত্রাণ ও পুনর্বাসন', 'দুর্যোগের ঝুঁকি হ্রাস', 'ফায়ার সার্ভিস', 'রেড ক্রিসেন্ট'].some(k => t.includes(k))) {
+      const disasterIcons = [AlertTriangle, Siren, ShieldAlert, CloudLightning, Waves, Flame, LifeBuoy, Ambulance, Radio, Cross, ShieldCheck];
+      return { ...baseColor, icon: disasterIcons[Math.abs(hash) % disasterIcons.length] };
+    }
+
+    // 14. নৈতিকতা / Ethics
+    if (['নৈতিকতা', 'ethics', 'নৈতিকতার ধারণা', 'উৎস ও বিকাশ', 'নৈতিক মূল্যবোধ', 'নৈতিক মানদণ্ড', 'নৈতিক সিদ্ধান্ত গ্রহণ', 'সততা', 'ন্যায়পরায়ণতা', 'পেশাগত নৈতিকতা', 'চিকিৎসা নৈতিকতা', 'সাংবাদিকতা নৈতিকতা', 'আইনি নৈতিকতা', 'দুর্নীতি ও নৈতিকতা', 'দুর্নীতির কারণ', 'দুর্নীতি প্রতিরোধ', 'নৈতিক অবক্ষয়', 'মানবাধিকার ও নৈতিকতা'].some(k => t.includes(k))) {
+      const ethicsIcons = [Scale, HeartHandshake, Handshake, ShieldCheck, BadgeCheck, Heart, UserCheck, CheckCircle2, ThumbsUp, Award, Gem];
+      return { ...baseColor, icon: ethicsIcons[Math.abs(hash) % ethicsIcons.length] };
+    }
+
+    // 15. মূল্যবোধ / Values
+    if (['মূল্যবোধ', 'values', 'সামাজিক মূল্যবোধ', 'পারিবারিক মূল্যবোধ', 'সাংস্কৃতিক মূল্যবোধ', 'গণতান্ত্রিক মূল্যবোধ', 'ধর্মীয় মূল্যবোধ', 'মূল্যবোধের শিক্ষা', 'সহনশীলতা', 'সহমর্মিতা', 'দেশপ্রেম', 'দায়িত্ববোধ ও কর্তব্যবোধ', 'পারস্পরিক শ্রদ্ধা', 'মানবিক মর্যাদা'].some(k => t.includes(k))) {
+      const valuesIcons = [Heart, HandHeart, HeartHandshake, Users, Sparkles, BadgeCheck, ShieldCheck, Award, Star, Handshake, Smile, Gem];
+      return { ...baseColor, icon: valuesIcons[Math.abs(hash) % valuesIcons.length] };
+    }
+
+    // 16. সুশাসন / Good Governance
+    if (['সুশাসন', 'good governance', 'সুশাসনের ধারণা', 'আইনের শাসন', 'স্বচ্ছতা', 'জবাবদিহিতা', 'অংশগ্রহণমূলক শাসন', 'দক্ষতা ও কার্যকারিতা', 'ন্যায়পরায়ণতা ও অন্তর্ভুক্তিতা', 'সুশাসনের প্রতিবন্ধকতা', 'আমলাতন্ত্র ও সুশাসন', 'দুর্নীতি দমন কমিশন', 'দুদক', 'নাগরিক চার্টার', 'সিটিজেন চার্টার', 'তথ্য অধিকার আইন', 'ই-গভর্ন্যান্স', 'সুশাসনে বিচার বিভাগের ভূমিকা'].some(k => t.includes(k))) {
+      const govIcons = [Landmark, Scale, ShieldCheck, Building2, Vote, Users, FileCheck, BadgeCheck, Handshake, Eye, ClipboardCheck, Gavel];
+      return { ...baseColor, icon: govIcons[Math.abs(hash) % govIcons.length] };
+    }
+
+    // 17. Current Affairs / সাম্প্রতিক বিষয়
+    if (['current affairs', 'সাম্প্রতিক বিষয়', 'সাম্প্রতিক বিষয়', 'সাম্প্রতিক ঘটনাপ্রবাহ', 'জাতীয় সাম্প্রতিক', 'আন্তর্জাতিক সাম্প্রতিক', 'সাম্প্রতিক চুক্তি', 'সম্মেলন ও বৈঠক', 'সাম্প্রতিক পুরস্কার', 'নোবেল', 'অস্কার', 'খেলাধুলার সাম্প্রতিক খবর', 'সাম্প্রতিক অর্থনৈতিক সূচক', 'জিডিপি', 'মুদ্রাস্ফীতি', 'বাজেট', 'নতুন আইন', 'বিল ও অধ্যাদেশ', 'সাম্প্রতিক আলোচিত ব্যক্তিত্ব', 'নিয়োগ ও পদত্যাগ'].some(k => t.includes(k))) {
+      const currentIcons = [Newspaper, Radio, Rss, Megaphone, CalendarDays, Globe, Clock, Bell, TrendingUp, Tv, Podcast, MessageSquareMore];
+      return { ...baseColor, icon: currentIcons[Math.abs(hash) % currentIcons.length] };
+    }
+
+    // 18. সাধারণ জ্ঞান / General Knowledge
+    if (['সাধারণ জ্ঞান', 'general knowledge', 'gk', 'বিসিএস সাধারণ জ্ঞান', 'বিশ্বের প্রাচীনতম ও বৃহত্তম', 'প্রথম', 'দীর্ঘতম', 'উচ্চতম', 'বিখ্যাত আবিষ্কার ও আবিষ্কারক', 'বিখ্যাত ব্যক্তিত্ব', 'মনীষী', 'বিখ্যাত যুদ্ধ ও চুক্তি', 'বিখ্যাত বই ও লেখক', 'আন্তর্জাতিক দিবস', 'সদর দফতর', 'মুদ্রা', 'রাজধানী', 'পার্লামেন্ট', 'জাতীয় প্রতীক ও স্লোগান', 'বিখ্যাত দ্বীপ', 'প্রণালী ও জলপ্রপাত', 'আন্তর্জাতিক সম্মেলন'].some(k => t.includes(k))) {
+      const gkIcons = [Brain, BookOpen, Lightbulb, Globe, Library, GraduationCap, CircleHelp, Trophy, Landmark, LucideMapIcon, Newspaper, Sparkles];
+      return { ...baseColor, icon: gkIcons[Math.abs(hash) % gkIcons.length] };
+    }
+
+    // 19. ইতিহাস (History)
+    if (['ইতিহাস', 'history', 'বিশ্বের প্রাচীন সভ্যতা', 'মেসোপটেমিয়া', 'মিশরীয়', 'সিন্ধু', 'গ্রিক', 'রোমান', 'মায়া ও ইনকা', 'মধ্যযুগীয় বিশ্ব', 'সামন্ততন্ত্র', 'ক্রুসেড', 'রেনেসাঁ', 'শিল্প বিপ্লব', 'আমেরিকান বিপ্লব', 'ফরাসি বিপ্লব', 'রুশ বিপ্লব', 'প্রথম বিশ্বযুদ্ধ ও জাতিসংঘ লিগ', 'দ্বিতীয় বিশ্বযুদ্ধ ও জাতিসংঘ', 'উপনিবেশবাদ ও স্বাধীনতা আন্দোলন', 'ভারত বিভাজন', 'স্নায়ুযুদ্ধ ও সোভিয়েত ইউনিয়ন পতন'].some(k => t.includes(k))) {
+      const historyIcons = [History, Landmark, Scroll, ScrollText, Castle, Crown, Swords, Hourglass, BookOpen, Flag, Clock3];
+      return { ...baseColor, icon: historyIcons[Math.abs(hash) % historyIcons.length] };
+    }
+
+    // 20. সংবিধান ও সরকার (Constitution & Governance)
+    if (['সংবিধান', 'constitution', 'বাংলাদেশের সংবিধানের পটভূমি', 'সংবিধান প্রণয়ন', 'সংবিধানের বৈশিষ্ট্য', 'প্রস্তাবনা', 'রাষ্ট্র পরিচালনার মূলনীতি', 'মৌলিক অধিকার', 'সংবিধানের অনুচ্ছেদ ও তফসিল', 'সংবিধানের সংশোধনী', 'সরকার ব্যবস্থা', 'আইন বিভাগ', 'জাতীয় সংসদ', 'শাসন বিভাগ', 'রাষ্ট্রপতি ও প্রধানমন্ত্রী', 'বিচার বিভাগ', 'সুপ্রিম কোর্ট', 'সাংবিধানিক পদ ও সংস্থা', 'নির্বাচন কমিশন', 'পিএসসি', 'সিএজি', 'অ্যাটর্নি জেনারেল', 'স্থানীয় সরকার', 'ইউনিয়ন পরিষদ', 'উপজেলা', 'সিটি কর্পোরেশন'].some(k => t.includes(k))) {
+      const constitutionIcons = [Landmark, Scale, Gavel, ScrollText, BookCheck, Vote, Building2, ShieldCheck, FileText, Users, BadgeCheck];
+      return { ...baseColor, icon: constitutionIcons[Math.abs(hash) % constitutionIcons.length] };
+    }
+
+    // 21. অর্থনীতি (Economy)
+    if (['অর্থনীতি', 'economy', 'অর্থনীতির মৌলিক ধারণা', 'ব্যষ্টিক ও সামষ্টিক অর্থনীতি', 'জিডিপি', 'জিএনপি', 'মাথাপিছু আয়', 'মুদ্রাস্ফীতি', 'মুদ্রা সংকোচন', 'রাজস্ব নীতি ও মুদ্রানীতি', 'বাজেট', 'আয়-ব্যয়', 'ঘাটতি', 'কর ব্যবস্থা', 'প্রত্যক্ষ ও পরোক্ষ কর', 'ভ্যাট', 'আন্তর্জাতিক বাণিজ্য', 'আমদানি', 'রপ্তানি', 'ব্যালেন্স অব পেমেন্ট', 'রেমিট্যান্স', 'বৈদেশিক মুদ্রা রিজার্ভ', 'দারিদ্র্য বিমোচন', 'এসডিজি', 'পঞ্চবার্ষিক পরিকল্পনা', 'অর্থনৈতিক সমীক্ষা'].some(k => t.includes(k))) {
+      const economyIcons = [ChartNoAxesCombined, TrendingUp, Coins, Banknote, Landmark, Wallet, PiggyBank, Percent, CircleDollarSign, HandCoins, PieChart, Calculator];
+      return { ...baseColor, icon: economyIcons[Math.abs(hash) % economyIcons.length] };
+    }
+
+    // 22. ব্যাংকিং (Banking)
+    if (['ব্যাংকিং', 'ব্যাংক', 'banking', 'কেন্দ্রীয় ব্যাংক', 'বাংলাদেশ ব্যাংক', 'বাণিজ্যিক ব্যাংক', 'বিশেষায়িত ব্যাংক', 'ইসলামী ব্যাংকিং', 'মুদ্রা ও ঋণ ব্যবস্থা', 'সুদের হার', 'ব্যাংক হার', 'সিআরআর', 'এসএলআর', 'তারল্য', 'চেক', 'ডিমান্ড ড্রাফট', 'পে-অর্ডার', 'এটিএম', 'ক্রেডিট কার্ড', ' debit card', 'মোবাইল ফিন্যান্সিয়াল সার্ভিস', 'অনলাইন ব্যাংকিং', 'নন-ব্যাংক আর্থিক প্রতিষ্ঠান', 'মানি লন্ডারিং প্রতিরোধ'].some(k => t.includes(k))) {
+      const bankingIcons = [Landmark, Banknote, CreditCard, WalletCards, Coins, CircleDollarSign, HandCoins, Receipt, ChartNoAxesCombined, PiggyBank, Vault, BadgeDollarSign];
+      return { ...baseColor, icon: bankingIcons[Math.abs(hash) % bankingIcons.length] };
+    }
+
+    // 23. কৃষি (Agriculture)
+    if (['কৃষি', 'agriculture', 'বাংলাদেশের প্রধান খাদ্যশস্য', 'ধান', 'গম', 'ভুট্টা', 'অর্থকরী ফসল', 'পাট', 'চা', 'আখ', 'তুলা', 'তৈলবীজ', 'ডাল ও মসলা', 'শাকসবজি ও ফলমূল', 'উদ্যানতত্ত্ব', 'কৃষি প্রযুক্তি ও উচ্চফলনশীল জাত', 'উফশী', 'হাইব্রিড', 'সেচ ব্যবস্থা ও সার প্রয়োগ', 'বালাই ব্যবস্থাপনা ও কীটনাশক', 'মৎস্য সম্পদ', 'অভ্যন্তরীণ ও সামুদ্রিক', 'প্রাণিসম্পদ', 'গবাদিপশু', 'পোল্ট্রি', 'দুগ্ধ শিল্প', 'কৃষি অর্থনীতি ও কৃষি ঋণ', 'কৃষি শুমারি'].some(k => t.includes(k))) {
+      const agriIcons = [Wheat, Sprout, Tractor, Leaf, Trees, Shovel, Sun, Droplets, Apple, Flower, Warehouse, Earth];
+      return { ...baseColor, icon: agriIcons[Math.abs(hash) % agriIcons.length] };
+    }
+
+    // 24. মুক্তিযুদ্ধ (Liberation War)
+    if (['মুক্তিযুদ্ধ', 'liberation war', '৭ই মার্চের ঐতিহাসিক ভাষণ', '২৫শে মার্চের কালরাত', 'অপারেশন সার্চলাইট', '২৬শে মার্চ স্বাধীনতা ঘোষণা', 'মুজিবনগর সরকার গঠন ও শপথ', '১১টি সেক্টর ও সেক্টর কমান্ডার', 'মুক্তিবাহিনী', 'গেরিলা যুদ্ধ', 'ক্র্যাক প্লাটুন', 'বীরশ্রেষ্ঠ', 'বীর উত্তম', 'বীর বিক্রম', 'বীর প্রতীক', 'শহীদ বুদ্ধিজীবী হত্যাকাণ্ড', '১৪ই ডিসেম্বর', '১৬ই ডিসেম্বর বিজয় দিবস', 'আত্মসমর্পণ দলিল', 'মুক্তিযুদ্ধের বিদেশি বন্ধু', 'মুক্তিযুদ্ধভিত্তিক সাহিত্য ও চলচ্চিত্র', 'স্মৃতিসৌধ ও ভাস্কর্য'].some(k => t.includes(k))) {
+      const liberationIcons = [Flag, Landmark, Shield, Star, Medal, Award, LucideMapIcon, History, ScrollText, Users, BadgeCheck, Flame];
+      return { ...baseColor, icon: liberationIcons[Math.abs(hash) % liberationIcons.length] };
+    }
+
+    // 20. দুর্যোগ ব্যবস্থাপনা (Disaster Management)
+    if (['দুর্যোগ ব্যবস্থাপনা', 'দুর্যোগ', 'disaster', 'disaster management', 'ঘূর্ণিঝড়', 'সাইক্লোন', 'বন্যা', 'খরা', 'নদীভাঙন', 'ভূমিকম্প', 'সুনামি', 'ভূমিধস', 'বজ্রপাত', 'জলোচ্ছ্বাস', 'পূর্বপ্রস্তুতি', 'সাড়া প্রদান', 'উদ্ধার', 'ত্রাণ ও পুনর্বাসন', 'দুর্যোগের ঝুঁকি হ্রাস', 'ফায়ার সার্ভিস', 'রেড ক্রিসেন্ট'].some(k => t.includes(k))) {
       const disasterIcons = [AlertTriangle, Siren, ShieldAlert, CloudLightning, Waves, Flame, LifeBuoy, Ambulance, Radio, Cross, ShieldCheck];
       return { ...baseColor, icon: disasterIcons[Math.abs(hash) % disasterIcons.length] };
     }
@@ -3655,26 +3811,30 @@ export function App() {
 
   // Filter Counts for Pill Bar (Accurately calculates status counts)
   const filterCounts = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const cAll = filteredTopics.length;
     const cCompleted = filteredTopics.filter(t => {
-      const tot = t.tasks.length;
-      return tot > 0 && t.tasks.filter(tk => tk.completed).length === tot;
+      const tasks = t.tasks || [];
+      const tot = tasks.length;
+      return tot > 0 && tasks.filter(tk => tk.completed).length === tot;
     }).length;
 
     const cInProgress = filteredTopics.filter(t => {
-      const tot = t.tasks.length;
-      const comp = t.tasks.filter(tk => tk.completed).length;
+      const tasks = t.tasks || [];
+      const tot = tasks.length;
+      const comp = tasks.filter(tk => tk.completed).length;
       return comp > 0 && comp < tot;
     }).length;
 
     const cNotStarted = filteredTopics.filter(t => {
-      const comp = t.tasks.filter(tk => tk.completed).length;
+      const tasks = t.tasks || [];
+      const comp = tasks.filter(tk => tk.completed).length;
       return comp === 0;
     }).length;
 
     const cOverdue = filteredTopics.filter(t => {
-      return t.tasks.some(tk => !tk.completed && tk.dueDate && tk.dueDate < todayStr);
+      const tasks = t.tasks || [];
+      return tasks.some(tk => !tk.completed && tk.dueDate && tk.dueDate < todayStr);
     }).length;
 
     return {
@@ -3694,28 +3854,32 @@ export function App() {
 
   // Filtered & Sorted Topics based on statusFilter & sortCategory & sortDirection (Pinned items ALWAYS stay 1st at top)
   const displayTopics = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     let list = [...filteredTopics];
 
     if (statusFilter === 'completed') {
       list = list.filter(t => {
-        const tot = t.tasks.length;
-        return tot > 0 && t.tasks.filter(tk => tk.completed).length === tot;
+        const tasks = t.tasks || [];
+        const tot = tasks.length;
+        return tot > 0 && tasks.filter(tk => tk.completed).length === tot;
       });
     } else if (statusFilter === 'in_progress') {
       list = list.filter(t => {
-        const tot = t.tasks.length;
-        const comp = t.tasks.filter(tk => tk.completed).length;
+        const tasks = t.tasks || [];
+        const tot = tasks.length;
+        const comp = tasks.filter(tk => tk.completed).length;
         return comp > 0 && comp < tot;
       });
     } else if (statusFilter === 'not_started') {
       list = list.filter(t => {
-        const comp = t.tasks.filter(tk => tk.completed).length;
+        const tasks = t.tasks || [];
+        const comp = tasks.filter(tk => tk.completed).length;
         return comp === 0;
       });
     } else if (statusFilter === 'overdue') {
       list = list.filter(t => {
-        return t.tasks.some(tk => !tk.completed && tk.dueDate && tk.dueDate < todayStr);
+        const tasks = t.tasks || [];
+        return tasks.some(tk => !tk.completed && tk.dueDate && tk.dueDate < todayStr);
       });
     }
 
@@ -3729,8 +3893,11 @@ export function App() {
         const d = Date.parse(t.createdAt);
         if (!isNaN(d)) return d;
       }
-      const match = t.id.match(/topic-(\d+)/);
-      if (match) return parseInt(match[1], 10);
+      const match = t.id.match(/\b(\d{13})\b/) || t.id.match(/topic-(\d+)/) || t.id.match(/(\d+)/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (!isNaN(n)) return n;
+      }
       return 0;
     };
 
@@ -3746,7 +3913,10 @@ export function App() {
         return sortDirection === 'asc' ? comp : -comp;
       });
     } else if (sortCategory === 'progress') {
-      const getP = (t: Topic) => (t.tasks.length > 0 ? t.tasks.filter(tk => tk.completed).length / t.tasks.length : 0);
+      const getP = (t: Topic) => {
+        const tasks = t.tasks || [];
+        return tasks.length > 0 ? tasks.filter(tk => tk.completed).length / tasks.length : 0;
+      };
       unpinned.sort((a, b) => {
         const diff = getP(a) - getP(b);
         if (diff !== 0) return sortDirection === 'asc' ? diff : -diff;
@@ -3759,12 +3929,12 @@ export function App() {
 
   // --- Statistics Calculations ---
   const totalWorkspaceTasks = useMemo(() => {
-    return currentWorkspaceTopics.reduce((acc, t) => acc + t.tasks.length, 0);
+    return currentWorkspaceTopics.reduce((acc, t) => acc + (t.tasks || []).length, 0);
   }, [currentWorkspaceTopics]);
 
   const completedWorkspaceTasks = useMemo(() => {
     return currentWorkspaceTopics.reduce(
-      (acc, t) => acc + t.tasks.filter(task => task.completed).length,
+      (acc, t) => acc + (t.tasks || []).filter(task => task.completed).length,
       0
     );
   }, [currentWorkspaceTopics]);
@@ -3773,12 +3943,12 @@ export function App() {
     totalWorkspaceTasks > 0 ? Math.round((completedWorkspaceTasks / totalWorkspaceTasks) * 100) : 0;
 
   const totalSectionTasks = useMemo(() => {
-    return filteredTopics.reduce((acc, t) => acc + t.tasks.length, 0);
+    return filteredTopics.reduce((acc, t) => acc + (t.tasks || []).length, 0);
   }, [filteredTopics]);
 
   const completedSectionTasks = useMemo(() => {
     return filteredTopics.reduce(
-      (acc, t) => acc + t.tasks.filter(task => task.completed).length,
+      (acc, t) => acc + (t.tasks || []).filter(task => task.completed).length,
       0
     );
   }, [filteredTopics]);
@@ -3906,7 +4076,7 @@ export function App() {
 
   // Track Daily Goal Achievement & trigger celebration modal + streak update (only once per day)
   useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const alreadyCelebratedToday = localStorage.getItem('studyflow_goal_celebration_shown_date') === todayStr;
 
     if (isDailyGoalAchieved && !previousGoalAchievedRef.current) {
@@ -4024,8 +4194,10 @@ export function App() {
       let totalAllWidth = 0;
       let allFit = true;
       for (let i = 0; i < total; i++) {
-        const fullLen = Math.min(currentWorkspaceSections[i].name.length, 25);
-        const pWidth = calcPillWidth(currentWorkspaceSections[i].name, fullLen) + (i > 0 ? GAP_PX : 0);
+        const sec = currentWorkspaceSections[i];
+        const secName = sec?.name || 'Section';
+        const fullLen = Math.min(secName.length, 25);
+        const pWidth = calcPillWidth(secName, fullLen) + (i > 0 ? GAP_PX : 0);
         if (totalAllWidth + pWidth > effectiveWidth) {
           allFit = false;
           break;
@@ -4037,7 +4209,10 @@ export function App() {
         setVisibleSectionCount(total);
         const limits: Record<string, number> = {};
         currentWorkspaceSections.forEach(s => {
-          limits[s.id] = Math.min(s.name.length, 25);
+          if (s) {
+            const secName = s.name || 'Section';
+            limits[s.id || secName] = Math.min(secName.length, 25);
+          }
         });
         setSectionCharLimits(limits);
         return;
@@ -4051,8 +4226,11 @@ export function App() {
 
       for (let i = 0; i < total; i++) {
         const sec = currentWorkspaceSections[i];
-        const fullLen = Math.min(sec.name.length, 25);
-        const minPillWidth = calcPillWidth(sec.name, 10) + (i > 0 ? GAP_PX : 0);
+        if (!sec) continue;
+        const secName = sec.name || 'Section';
+        const secId = sec.id || secName;
+        const fullLen = Math.min(secName.length, 25);
+        const minPillWidth = calcPillWidth(secName, 10) + (i > 0 ? GAP_PX : 0);
 
         // Check if section i can fit at least 10 characters
         if (remainingSpace < minPillWidth) {
@@ -4060,21 +4238,21 @@ export function App() {
         }
 
         // Check if section i can fit its full length (up to 25 chars)
-        const maxPillWidth = calcPillWidth(sec.name, fullLen) + (i > 0 ? GAP_PX : 0);
+        const maxPillWidth = calcPillWidth(secName, fullLen) + (i > 0 ? GAP_PX : 0);
         if (remainingSpace >= maxPillWidth) {
-          limits[sec.id] = fullLen;
+          limits[secId] = fullLen;
           remainingSpace -= maxPillWidth;
           fitCount++;
         } else {
           // Section i fits partially between 10 and fullLen chars
           let bestChars = 10;
           for (let c = fullLen; c >= 10; c--) {
-            if (calcPillWidth(sec.name, c) + (i > 0 ? GAP_PX : 0) <= remainingSpace) {
+            if (calcPillWidth(secName, c) + (i > 0 ? GAP_PX : 0) <= remainingSpace) {
               bestChars = c;
               break;
             }
           }
-          limits[sec.id] = bestChars;
+          limits[secId] = bestChars;
           fitCount++;
           break; // Section i is growing, so section i+1 cannot appear yet until section i reaches max chars!
         }
@@ -4653,18 +4831,17 @@ export function App() {
     if (!orig) return;
 
     const dupTitle = `${orig.title} (Copy)`;
+    const now = new Date();
     const newTopic: Topic = {
       ...orig,
-      id: `topic-dup-${Date.now()}`,
+      id: `topic-${now.getTime()}`,
       title: dupTitle,
       isPinned: false,
-      tasks: orig.tasks.map((t, idx) => ({ ...t, id: `dup-${Date.now()}-${idx}` }))
+      createdAt: now.toISOString(),
+      tasks: (orig.tasks || []).map((t, idx) => ({ ...t, id: `dup-${now.getTime()}-${idx}` }))
     };
 
-    const origIndex = topics.findIndex(t => t.id === topicId);
-    const newTopics = [...topics];
-    newTopics.splice(origIndex + 1, 0, newTopic);
-    setTopics(newTopics);
+    setTopics(prev => [newTopic, ...prev]);
     showToast(`Created duplicate "${dupTitle}"`);
   };
 
@@ -4679,7 +4856,7 @@ export function App() {
     }
 
     const now = new Date().toISOString();
-    const targetWithDate = { ...target, deletedAt: (target as any).deletedAt || now };
+    const targetWithDate = { ...target, deletedAt: now };
 
     setTimeout(() => {
       setDeletedTopics(prev => [targetWithDate, ...prev]);
@@ -4708,7 +4885,7 @@ export function App() {
   const handleRestoreTopic = (topicId: string) => {
     const target = deletedTopics.find(t => t.id === topicId);
     if (target) {
-      setTopics(prev => [target, ...prev]);
+      setTopics(prev => [target, ...prev.filter(t => t.id !== topicId)]);
       setDeletedTopics(prev => prev.filter(t => t.id !== topicId));
       showToast(`Restored "${target.title}"`);
     }
@@ -4782,7 +4959,7 @@ export function App() {
   const handleRestoreNote = (noteId: string) => {
     const target = deletedNotes.find(item => item.note.id === noteId);
     if (target) {
-      setNotes(prev => [target.note, ...prev]);
+      setNotes(prev => [target.note, ...prev.filter(n => n.id !== noteId)]);
       setDeletedNotes(prev => prev.filter(item => item.note.id !== noteId));
       showToast(`Restored "${target.note.title || 'Untitled Note'}"`);
     }
@@ -4797,45 +4974,137 @@ export function App() {
   };
 
   const handleRestoreWorkspace = (wsId: string) => {
-    const target = deletedWorkspaces.find(item => item.workspace.id === wsId);
+    const cleanId = (wsId || '').replace(/^ws-/, '');
+    const target = deletedWorkspaces.find(item => {
+      if (!item) return false;
+      const w = item.workspace || (item as any);
+      return w?.id === wsId || w?.id === cleanId || w?.name === wsId || w?.name === cleanId;
+    });
+
     if (target) {
-      setWorkspaces(prev => [...prev, target.workspace]);
+      const rawWs: any = target.workspace || target;
+      const wsName = typeof rawWs === 'string' ? rawWs : (rawWs?.name || 'Workspace');
+      const realWsId = (typeof rawWs === 'object' && rawWs?.id) || `workspace-${cleanId || Date.now()}`;
+      const wsObj: WorkspaceWindow = { id: realWsId, name: wsName };
+
+      setWorkspaces(prev => {
+        const withoutTarget = prev.filter(w => w && w.id !== wsObj.id);
+        return [...withoutTarget, wsObj];
+      });
+
       if (target.topics && target.topics.length > 0) {
-        setTopics(prev => [...prev, ...target.topics]);
+        setTopics(prev => {
+          const targetTopicMap = new Map(target.topics!.map(t => [t.id, t]));
+          const withoutTargetTopics = prev.filter(t => !targetTopicMap.has(t.id));
+          const safeRestored = target.topics!.map(t => ({
+            ...t,
+            workspaceId: realWsId,
+            tasks: Array.isArray(t?.tasks) ? t.tasks : [],
+            notes: Array.isArray(t?.notes) ? t.notes : [],
+            links: Array.isArray(t?.links) ? t.links : [],
+            tags: Array.isArray(t?.tags) ? t.tags : [],
+          }));
+          return [...withoutTargetTopics, ...safeRestored];
+        });
       }
+
       if (target.sections && target.sections.length > 0) {
-        setWorkspaceSections(prev => [...prev, ...target.sections]);
+        setWorkspaceSections(prev => {
+          const targetSecMap = new Map(target.sections!.map(s => [s.id || s.name, s]));
+          const withoutTargetSecs = prev.filter(s => !targetSecMap.has(s.id) && !targetSecMap.has(s.name));
+          const sanitizedSecs = target.sections!.map(s => ({
+            id: s.id || `section-${s.name}-${realWsId}`,
+            name: s.name || 'Section',
+            workspaceId: realWsId,
+          }));
+          return [...withoutTargetSecs, ...sanitizedSecs];
+        });
       }
-      setDeletedWorkspaces(prev => prev.filter(item => item.workspace.id !== wsId));
-      showToast(`Restored workspace "${target.workspace.name}"`);
+
+      setDeletedWorkspaces(prev => prev.filter(item => {
+        if (!item) return false;
+        const w = item.workspace || (item as any);
+        return w?.id !== wsObj.id && w?.id !== wsId && w?.id !== cleanId;
+      }));
+
+      // Switch active workspace to restored workspace
+      setActiveWorkspaceId(realWsId);
+      showToast(`Restored workspace "${wsObj.name}"`);
     }
   };
 
   const handlePermanentDeleteWorkspace = (wsId: string) => {
+    const cleanId = (wsId || '').replace(/^ws-/, '');
     if (userSettings.soundEffects !== false) {
       soundManager.playTrash();
     }
-    setDeletedWorkspaces(prev => prev.filter(item => item.workspace.id !== wsId));
+    setDeletedWorkspaces(prev => prev.filter(item => {
+      if (!item) return false;
+      const w = item.workspace || (item as any);
+      return w?.id !== wsId && w?.id !== cleanId;
+    }));
     showToast(`Permanently deleted workspace`);
   };
 
   const handleRestoreSection = (sectionId: string) => {
-    const target = deletedSections.find(item => item.section.id === sectionId);
+    const cleanId = (sectionId || '').replace(/^sec-/, '');
+    const target = deletedSections.find(item => {
+      if (!item) return false;
+      const s = item.section || (item as any);
+      return s?.id === sectionId || s?.id === cleanId || s?.name === sectionId || s?.name === cleanId;
+    });
+
     if (target) {
-      setWorkspaceSections(prev => [...prev, target.section]);
+      const rawSec: any = target.section || target;
+      const secName = typeof rawSec === 'string' ? rawSec : (rawSec?.name || 'Section');
+      const wsId = (typeof rawSec === 'object' && rawSec?.workspaceId) || activeWorkspaceId || '1';
+      const secId = (typeof rawSec === 'object' && rawSec?.id) || `section-${secName}-${wsId}`;
+      const secObj: SectionItem = { id: secId, name: secName, workspaceId: wsId };
+
+      setWorkspaceSections(prev => {
+        const withoutTarget = prev.filter(s => s && s.id !== secObj.id && s.name !== secObj.name);
+        return [...withoutTarget, secObj];
+      });
+
       if (target.topics && target.topics.length > 0) {
-        setTopics(prev => [...prev, ...target.topics]);
+        setTopics(prev => {
+          const targetTopicMap = new Map(target.topics!.map(t => [t.id, t]));
+          const withoutTargetTopics = prev.filter(t => !targetTopicMap.has(t.id));
+          const restoredTopics = target.topics!.map(t => ({
+            ...t,
+            section: secObj.name,
+            workspaceId: wsId,
+            tasks: Array.isArray(t?.tasks) ? t.tasks : [],
+            notes: Array.isArray(t?.notes) ? t.notes : [],
+            links: Array.isArray(t?.links) ? t.links : [],
+            tags: Array.isArray(t?.tags) ? t.tags : [],
+          }));
+          return [...withoutTargetTopics, ...restoredTopics];
+        });
       }
-      setDeletedSections(prev => prev.filter(item => item.section.id !== sectionId));
-      showToast(`Restored section "${target.section.name}" (${target.topics?.length || 0} topics restored)`);
+
+      setDeletedSections(prev => prev.filter(item => {
+        if (!item) return false;
+        const s = item.section || (item as any);
+        return s?.id !== secObj.id && s?.name !== secObj.name && s?.id !== sectionId && s?.id !== cleanId;
+      }));
+
+      // Set active section to restored section
+      setActiveSection(secObj.name);
+      showToast(`Restored section "${secObj.name}"`);
     }
   };
 
   const handlePermanentDeleteSection = (sectionId: string) => {
+    const cleanId = (sectionId || '').replace(/^sec-/, '');
     if (userSettings.soundEffects !== false) {
       soundManager.playTrash();
     }
-    setDeletedSections(prev => prev.filter(item => item.section.id !== sectionId));
+    setDeletedSections(prev => prev.filter(item => {
+      if (!item) return false;
+      const s = item.section || (item as any);
+      return s?.id !== sectionId && s?.id !== cleanId && s?.name !== sectionId && s?.name !== cleanId;
+    }));
     showToast(`Permanently deleted section`);
   };
 
@@ -5058,7 +5327,7 @@ export function App() {
     );
     if (!titleParam) setNewTaskTitle('');
     setAddingTaskTopicId(null);
-    showToast(`Task added!`);
+    showToast(`Task "${titleToUse.trim()}" added!`);
   };
 
   const handleDeleteTask = (topicId: string, taskId: string) => {
@@ -5181,6 +5450,7 @@ export function App() {
       workspaceId: activeWorkspaceId,
       customColor: defaultTheme.id,
       customIcon: (defaultTheme as any).iconName || undefined,
+      createdAt: new Date().toISOString(),
       tasks: []
     };
 
@@ -5493,6 +5763,10 @@ export function App() {
     const deletedSectionItem = currentSecs.find(s => s.name === secToDelete);
     const affectedTopics = topics.filter(t => t.workspaceId === activeWorkspaceId && t.section === secToDelete);
 
+    if (userSettings.soundEffects !== false) {
+      soundManager.playTrash();
+    }
+
     const now = new Date();
     const formattedDate = `${String(now.getDate()).padStart(2, '0')}/${String(
       now.getMonth() + 1
@@ -5502,50 +5776,43 @@ export function App() {
     })}`;
 
     if (deletedSectionItem) {
-      setDeletedSections(prev => [{ section: deletedSectionItem, deletedAt: formattedDate }, ...prev]);
+      setDeletedSections(prev => [{ section: deletedSectionItem, topics: affectedTopics, deletedAt: formattedDate }, ...prev]);
     }
 
+    // Remove section from active sections
     setWorkspaceSections(prev => prev.filter(s => !(s.workspaceId === activeWorkspaceId && s.name === secToDelete)));
 
-    if (remainingSecs.length > 0) {
-      const fallbackSection = remainingSecs[0].name;
-      setTopics(prev => prev.map(t => (t.workspaceId === activeWorkspaceId && t.section === secToDelete) ? { ...t, section: fallbackSection } : t));
-      if (activeSection === secToDelete) {
-        setActiveSection(fallbackSection);
-      }
-      showToast(
-        `Deleted section "${secToDelete}". Topics moved to "${fallbackSection}"`,
-        () => {
-          if (deletedSectionItem) {
-            setWorkspaceSections(prev => [...prev, deletedSectionItem]);
-            setDeletedSections(prev => prev.filter(s => s.section.id !== deletedSectionItem.id));
-          }
-          if (affectedTopics.length > 0) {
-            setTopics(prev => prev.map(t => {
-              const matched = affectedTopics.find(at => at.id === t.id);
-              return matched ? { ...t, section: secToDelete } : t;
-            }));
-          }
-          setActiveSection(secToDelete);
-          showToast(`Restored section "${secToDelete}"`);
-        },
-        6000
-      );
-    } else {
-      setActiveSection(null);
-      showToast(
-        `Deleted section "${secToDelete}"`,
-        () => {
-          if (deletedSectionItem) {
-            setWorkspaceSections(prev => [...prev, deletedSectionItem]);
-            setDeletedSections(prev => prev.filter(s => s.section.id !== deletedSectionItem.id));
-          }
-          setActiveSection(secToDelete);
-          showToast(`Restored section "${secToDelete}"`);
-        },
-        6000
-      );
+    // Remove section's topics from active topics
+    setTopics(prev => prev.filter(t => !(t.workspaceId === activeWorkspaceId && t.section === secToDelete)));
+
+    const nextActiveSection = remainingSecs.length > 0 ? remainingSecs[0].name : null;
+    if (activeSection === secToDelete) {
+      setActiveSection(nextActiveSection);
     }
+
+    showToast(
+      `✓ Moved section "${secToDelete}" and ${affectedTopics.length} topic(s) to Recycle Bin`,
+      () => {
+        if (deletedSectionItem) {
+          setWorkspaceSections(prev => {
+            const withoutSec = prev.filter(s => s.id !== deletedSectionItem.id);
+            return [...withoutSec, deletedSectionItem];
+          });
+          setDeletedSections(prev => prev.filter(s => s.section.id !== deletedSectionItem.id));
+        }
+        if (affectedTopics.length > 0) {
+          setTopics(prev => {
+            const existingIds = new Set(prev.map(t => t.id));
+            const restoredList = affectedTopics.filter(t => !existingIds.has(t.id));
+            return [...prev, ...restoredList];
+          });
+        }
+        setActiveSection(secToDelete);
+        showToast(`Restored section "${secToDelete}"`);
+      },
+      6000
+    );
+
     setActiveMenuSection(null);
   };
 
@@ -5772,75 +6039,71 @@ export function App() {
     reader.readAsText(file);
   };
 
-  // 1. Splash / Session check loading screen
-  if (isAuthChecking) {
-    return (
-      <div className="h-[100dvh] w-full bg-slate-900 flex flex-col items-center justify-center font-sans relative overflow-hidden select-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-slate-900 to-slate-950"></div>
-        <div className="relative z-10 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-2xl relative mb-5 animate-pulse">
-            <div className="preserve-color relative w-[32px] h-[32px] flex items-center justify-center shrink-0">
-              <div className="absolute top-0 left-0 w-[21px] h-[21px] bg-[#2563EB] rounded-[5.5px] shadow-3xs"></div>
-              <div className="absolute bottom-0 right-0 w-[21px] h-[21px] bg-[#6366F1]/90 backdrop-blur-[2px] rounded-[5.5px] mix-blend-multiply dark:mix-blend-screen dark:opacity-90 shadow-3xs"></div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5 text-slate-300 font-semibold text-sm">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-            <span>Connecting to Study Flow...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Mandatory Auth Wall (Requires Login or Sign Up)
+  // 1. Unauthenticated Visitor Landing Page & Auth Modal (Instant 0ms Load, Zero Splash)
   if (!currentUser) {
     return (
-      <div className="h-[100dvh] w-full bg-slate-900 flex items-center justify-center relative overflow-hidden font-sans select-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/40 via-slate-900 to-slate-950"></div>
+      <div className="min-h-screen w-full relative bg-[#F8FAFC] dark:bg-[#090D16] select-text preserve-color">
+        <LandingPage
+          userSettings={userSettings}
+          onToggleTheme={handleToggleThemeMode}
+          onGetStarted={() => setIsAuthModalOpen(true)}
+          onSignIn={() => setIsAuthModalOpen(true)}
+        />
         <AuthModal
-          isOpen={true}
-          isClosable={false}
-          onClose={() => {}}
-          onSuccess={() => {
-            setToastData({ message: 'Welcome to Study Flow! 🚀' });
+          isOpen={isAuthModalOpen}
+          isClosable={true}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={(user) => {
+            setIsAuthModalOpen(false);
+            const rawName = user?.displayName || (user?.email ? user.email.split('@')[0] : '');
+            const displayName = rawName ? ` ${rawName}` : '';
+            setToastData({ message: `Welcome${displayName} to Study Flow 🚀` });
           }}
         />
-        {/* Toast Notification */}
-        <AnimatePresence>
-          {toastData && (
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.95 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.7}
-              onDragEnd={(_, info) => {
-                if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
-                  setToastData(null);
-                }
-              }}
-              whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
-              className="fixed bottom-6 right-4 sm:right-6 z-[999999999] pointer-events-auto select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] transition-all duration-200 cursor-grab active:cursor-grabbing touch-pan-y"
-            >
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 text-xs font-semibold tracking-tight min-w-[280px]">
-                <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
-                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+        {/* Toast Notification Stack */}
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[999999999] pointer-events-none select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] flex flex-col items-end gap-2">
+          <AnimatePresence mode="popLayout">
+            {toasts.map((toast) => (
+              <motion.div
+                layout
+                key={toast.id}
+                initial={{ opacity: 0, y: 28, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -16, scale: 0.92, transition: { duration: 0.2 } }}
+                transition={{
+                  layout: { type: 'spring', stiffness: 380, damping: 28, mass: 0.8 },
+                  opacity: { duration: 0.2 },
+                  y: { type: 'spring', stiffness: 380, damping: 28 },
+                  scale: { duration: 0.2 },
+                }}
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.7}
+                onDragEnd={(_, info) => {
+                  if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
+                    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                  }
+                }}
+                whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
+                className="pointer-events-auto cursor-grab active:cursor-grabbing touch-pan-y w-full flex justify-end"
+              >
+                <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 text-xs font-semibold tracking-tight min-w-[280px]">
+                  <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
+                    <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <span className="flex-1 text-slate-100 leading-snug">{toast.message}</span>
+                  <button
+                    type="button"
+                    onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                    className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <span className="flex-1 text-slate-100 leading-snug">{toastData.message}</span>
-                <button
-                  type="button"
-                  onClick={() => setToastData(null)}
-                  className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       </div>
     );
   }
@@ -5856,1670 +6119,90 @@ export function App() {
         className="hidden"
       />
 
-      {/* Mobile Drawer (Spring Physics, Swipe-Ready, Google Gemini / Notion Style) */}
-      <AnimatePresence>
-        {!sidebarCollapsed && (
-          <>
-            {/* Mobile Backdrop Overlay */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-              onClick={() => setSidebarCollapsed(true)}
-              className="md:hidden fixed inset-0 bg-slate-950/45 backdrop-blur-[2px] z-[99998] cursor-pointer"
-            />
-
-            {/* Smooth Spring Gliding Mobile Drawer */}
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 32, stiffness: 380, mass: 0.75 }}
-              className="md:hidden fixed inset-y-0 left-0 w-[275px] max-w-[85vw] h-[100dvh] z-[99999] bg-white border-r border-[#E5EAF2] shadow-2xl shadow-slate-950/25 flex flex-col select-none font-sans"
-              style={{ height: '100dvh' }}
-            >
-              {/* Brand Header with Close Button (Exact 56px matching main header) */}
-              <div className="h-[56px] sm:h-[60px] px-3.5 flex items-center justify-between shrink-0 border-b border-slate-200/80 dark:border-slate-800 relative z-50 overflow-visible">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                    <div className="preserve-color relative w-[23px] h-[23px] flex items-center justify-center shrink-0">
-                      <div className="absolute top-0 left-0 w-[16px] h-[16px] bg-[#2563EB] rounded-[4px]"></div>
-                      <div className="absolute bottom-0 right-0 w-[16px] h-[16px] bg-[#6366F1]/90 backdrop-blur-[2px] rounded-[4px] mix-blend-multiply dark:mix-blend-screen dark:opacity-90"></div>
-                    </div>
-                  </div>
-                  <div className="relative" data-accent-picker-container="mobile">
-                    <span className="font-[700] text-[16px] text-[#101828] dark:text-slate-100 tracking-tight flex items-center">
-                      Study&nbsp;
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsAccentQuickPickerOpen(prev => !prev);
-                        }}
-                        className="accent-picker-toggle-btn brand-flow-highlight font-extrabold cursor-pointer hover:opacity-80 active:scale-95 transition-all inline-flex items-center rounded-md px-1 py-0.5 -mx-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        title="Click to choose accent color"
-                      >
-                        Flow
-                      </button>
-                    </span>
-
-                    <AnimatePresence>
-                      {isAccentQuickPickerOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.92, y: 4 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.92, y: 4 }}
-                          transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                          className="accent-picker-popover absolute left-0 top-full mt-2.5 z-[99999] p-2.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-950/20 flex flex-col gap-2 min-w-[210px]"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between px-1 text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                            <span>Accent Color</span>
-                            <button
-                              type="button"
-                              onClick={() => setIsAccentQuickPickerOpen(false)}
-                              className="p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-between gap-1.5 px-0.5">
-                            {ACCENT_COLOR_OPTIONS.map((opt) => {
-                              const isSelected = (userSettings.primaryColor || 'blue') === opt.id;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onPointerDown={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectAccentColor(opt.id);
-                                  }}
-                                  className={`preserve-color relative w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-115 active:scale-95 cursor-pointer shadow-xs ${
-                                    isSelected ? 'ring-2 ring-offset-2 ring-slate-400 dark:ring-offset-slate-900 scale-110' : 'hover:opacity-90'
-                                  }`}
-                                  style={{ backgroundColor: opt.color }}
-                                  title={opt.label}
-                                >
-                                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3] text-white drop-shadow-xs" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleThemeMode();
-                    }}
-                    className="w-7 h-7 flex items-center justify-center border border-[#E5EAF2] dark:border-slate-800 rounded-[8px] text-[#667085] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
-                    title={resolveEffectiveTheme(userSettings.theme || (userSettings.darkMode ? 'dark' : 'light')) === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                  >
-                    {resolveEffectiveTheme(userSettings.theme || (userSettings.darkMode ? 'dark' : 'light')) === 'dark' ? (
-                      <Sun className="w-3.5 h-3.5 text-amber-400 stroke-[2.2]" />
-                    ) : (
-                      <Moon className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 stroke-[2.2]" />
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSidebarCollapsed(true)}
-                    className="w-7 h-7 flex items-center justify-center border border-[#E5EAF2] dark:border-slate-800 rounded-[8px] text-[#667085] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
-                    title="Collapse sidebar"
-                  >
-                    <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Mobile Drawer Main Content Container (No whole-sidebar scroll) */}
-              <div className="flex-1 min-h-0 px-2 flex flex-col pt-1.5 pb-2 overflow-hidden">
-                {/* Section 1: Views (Fixed at top) */}
-                <div className="flex flex-col gap-[2px] shrink-0">
-                  <div className="px-2 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none">
-                    Views
-                  </div>
-
-                  {/* Mobile Search Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSearchPageOpen(true);
-                      setIsNotesPageOpen(false);
-                      setIsTasksPageOpen(false);
-                      setIsRecycleBinOpen(false);
-                      setIsAnalyticsPageOpen(false);
-                      setSidebarCollapsed(true);
-                    }}
-                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
-                      isSearchPageOpen
-                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Search
-                        className={`w-[17px] h-[17px] shrink-0 ${
-                          isSearchPageOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`truncate font-serif text-[13px] leading-tight ${isSearchPageOpen ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>Search</span>
-                    </div>
-                    <kbd
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 h-[19px] rounded-[4px] border leading-none select-none shrink-0 transition-colors ${
-                        isSearchPageOpen
-                          ? 'bg-white/20 border-white/30 text-white'
-                          : 'bg-slate-100/90 dark:bg-slate-800 border-slate-200/90 dark:border-slate-700 text-slate-500 dark:text-slate-400 shadow-3xs'
-                      }`}
-                    >
-                      <Command className={`w-[10.5px] h-[10.5px] stroke-[2.3] shrink-0 ${isSearchPageOpen ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
-                      <span className={`text-[10px] font-bold leading-none ${isSearchPageOpen ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>K</span>
-                    </kbd>
-                  </button>
-
-                  {/* Mobile Notes Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNotesPageOpen(true);
-                      setIsTasksPageOpen(false);
-                      setIsSearchPageOpen(false);
-                      setIsRecycleBinOpen(false);
-                      setIsAnalyticsPageOpen(false);
-                      setSidebarCollapsed(true);
-                    }}
-                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
-                      isNotesPageOpen
-                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <NotebookPen
-                        className={`w-[17px] h-[17px] shrink-0 ${
-                          isNotesPageOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`truncate font-serif text-[13px] leading-tight ${isNotesPageOpen ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>Notes</span>
-                    </div>
-                    {notes.length > 0 && (
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
-                          isNotesPageOpen
-                            ? 'bg-white/20 border-white/30 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
-                        }`}
-                      >
-                        {notes.length}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Mobile Tasks Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsTasksPageOpen(true);
-                      setIsNotesPageOpen(false);
-                      setIsSearchPageOpen(false);
-                      setIsRecycleBinOpen(false);
-                      setIsAnalyticsPageOpen(false);
-                      setSidebarCollapsed(true);
-                    }}
-                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
-                      isTasksPageOpen
-                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <ListTodo
-                        className={`w-[17px] h-[17px] shrink-0 ${
-                          isTasksPageOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`truncate font-serif text-[13px] leading-tight ${isTasksPageOpen ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>Tasks</span>
-                    </div>
-                    {standaloneTasks.filter(t => !t.completed).length > 0 && (
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
-                          isTasksPageOpen
-                            ? 'bg-white/20 border-white/30 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
-                        }`}
-                      >
-                        {standaloneTasks.filter(t => !t.completed).length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      showToast('Showing starred topics');
-                      setSidebarCollapsed(true);
-                    }}
-                    className="w-full h-[32px] px-2 rounded-md flex items-center gap-2 text-slate-700 hover:bg-slate-100 hover:text-slate-950 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Star className="w-[17px] h-[17px] shrink-0 text-slate-500" strokeWidth={1.75} />
-                    <span className="truncate font-serif text-[13px] leading-tight font-medium text-[#334155]">Starred</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsShortcutsOpen(true);
-                      setSidebarCollapsed(true);
-                    }}
-                    className="w-full h-[32px] px-2 rounded-md flex items-center gap-2 text-slate-700 hover:bg-slate-100 hover:text-slate-950 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Keyboard className="w-[17px] h-[17px] shrink-0 text-slate-500" strokeWidth={1.75} />
-                    <span className="truncate font-serif text-[13px] leading-tight font-medium text-[#334155]">Shortcuts</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAnalyticsPageOpen(true);
-                      setIsTasksPageOpen(false);
-                      setIsSearchPageOpen(false);
-                      setIsNotesPageOpen(false);
-                      setIsRecycleBinOpen(false);
-                      setSidebarCollapsed(true);
-                    }}
-                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
-                      isAnalyticsPageOpen
-                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <TrendingUp
-                        className={`w-[17px] h-[17px] shrink-0 ${
-                          isAnalyticsPageOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`truncate font-serif text-[13px] leading-tight ${isAnalyticsPageOpen ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>Analytics</span>
-                    </div>
-                  </button>
-                </div>
-
-                {/* Section 2: Workspaces Header (Fixed) */}
-                <div className="h-2 shrink-0" />
-                <div
-                  onClick={() => {
-                    if (!isReorderingWorkspaces) {
-                      toggleWorkspacesCollapse();
-                    }
-                  }}
-                  className={`relative group/ws-header w-full h-6 flex items-center justify-between text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none transition-colors shrink-0 px-1.5 ${
-                    !isReorderingWorkspaces ? 'cursor-pointer hover:text-slate-600' : 'cursor-default'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 min-w-0 pr-14">
-                    {isReorderingWorkspaces ? (
-                      <span className="text-[#2563EB] font-extrabold flex items-center gap-1.5">
-                        <ReorderWorkspacesIcon className="w-3.5 h-3.5" />
-                        <span>Reorder</span>
-                      </span>
-                    ) : (
-                      <>
-                        <span>Workspaces</span>
-                        <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full bg-slate-100/90 text-slate-500 border border-slate-200/50">
-                          {sortedWorkspaces.length}
-                        </span>
-                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isWorkspacesCollapsed ? '-rotate-90 text-slate-400' : 'rotate-0 text-slate-500 hover:text-slate-700'}`} />
-                      </>
-                    )}
-                  </div>
-
-                  {!isReorderingWorkspaces ? (
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 shrink-0 z-10">
-                      {workspaces.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startReorderingWorkspaces();
-                          }}
-                          className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-[#2563EB] hover:bg-blue-50 transition-all cursor-pointer"
-                          title="Reorder Workspaces"
-                        >
-                          <ReorderWorkspacesIcon className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsNewWorkspaceOpen(true);
-                          setSidebarCollapsed(true);
-                        }}
-                        className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-[#2563EB] hover:bg-blue-50 transition-all cursor-pointer"
-                        title="New Workspace"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 z-10">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCancelReorder();
-                        }}
-                        className="px-1.5 py-0.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-[11px] font-medium transition-all cursor-pointer"
-                        title="Cancel Reordering"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDoneReorder();
-                        }}
-                        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-[#2563EB] text-white hover:bg-blue-700 text-[11px] font-bold transition-all cursor-pointer shadow-3xs"
-                        title="Done Reordering"
-                      >
-                        <Check className="w-3 h-3 stroke-[2.5]" />
-                        <span>Done</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Workspaces Scrollable Section (SCROLL IS STRICTLY LIMITED HERE) */}
-                <div
-                  className={`flex-1 min-h-0 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    !isWorkspacesCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none max-h-0'
-                  }`}
-                >
-                  {isReorderingWorkspaces ? (
-                    /* Mobile Reorder Mode (Up/Down Buttons + Touch Support) */
-                    <div 
-                      className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain custom-scrollbar flex flex-col gap-[2px] py-0.5 touch-pan-y"
-                      style={{ WebkitOverflowScrolling: 'touch' }}
-                    >
-                      {workspaces.map((ws, idx) => {
-                        const isDragging = draggedWsIdx === idx;
-                        const isDragOver = dragOverWsIdx === idx && draggedWsIdx !== idx;
-                        const isDragBelow = draggedWsIdx !== null && draggedWsIdx < idx;
-                        return (
-                          <div
-                            key={ws.id}
-                            data-reorder-index={idx}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, idx)}
-                            onDragOver={(e) => handleDragOver(e, idx)}
-                            onDrop={(e) => handleDrop(e, idx)}
-                            onDragEnd={handleDragEnd}
-                            className={`relative group w-full h-[32px] min-h-[32px] shrink-0 flex items-center justify-between rounded-md px-1.5 gap-1.5 transition-all duration-150 select-none outline-none focus:outline-none focus:ring-0 ${
-                              isDragging
-                                ? 'opacity-40 scale-[0.98] bg-blue-50/80 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700'
-                                : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 active:bg-slate-200/60 dark:active:bg-slate-700/60'
-                            }`}
-                          >
-                            {isDragOver && (
-                              <div
-                                className={`absolute left-1 right-1 h-[2px] bg-[#2563EB] dark:bg-blue-500 rounded-full shadow-sm shadow-blue-500/50 z-30 pointer-events-none ${
-                                  isDragBelow ? '-bottom-[2px]' : '-top-[2px]'
-                                }`}
-                              />
-                            )}
-
-                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                              <div
-                                onTouchStart={(e) => handleTouchStart(e, idx)}
-                                onTouchMove={handleTouchMove}
-                                onTouchEnd={handleTouchEnd}
-                                className="p-0.5 -ml-0.5 cursor-grab active:cursor-grabbing touch-none flex items-center"
-                                title="Drag to reorder"
-                              >
-                                <GripVertical className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-200 shrink-0" />
-                              </div>
-                              {ws.isPinned ? (
-                                <Pin className="w-[15px] h-[15px] text-red-600 fill-red-600 dark:text-red-500 dark:fill-red-500 shrink-0" />
-                              ) : (
-                                <BookOpen className="w-[15px] h-[15px] text-slate-500 dark:text-slate-400 shrink-0" strokeWidth={1.75} />
-                              )}
-                              <span className="truncate font-serif text-[13px] font-medium text-slate-800 dark:text-slate-200 leading-tight">
-                                {ws.name}
-                              </span>
-                            </div>
-
-                            {/* Up/Down Move Buttons */}
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveWorkspace(idx, idx - 1)}
-                                className={`p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-700 transition-colors outline-none focus:outline-none focus:ring-0 ${
-                                  idx === 0 ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'
-                                }`}
-                                title="Move up"
-                              >
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={idx === workspaces.length - 1}
-                                onClick={() => handleMoveWorkspace(idx, idx + 1)}
-                                className={`p-1 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-700 transition-colors outline-none focus:outline-none focus:ring-0 ${
-                                  idx === workspaces.length - 1 ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'
-                                }`}
-                                title="Move down"
-                              >
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div 
-                      className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain custom-scrollbar flex flex-col gap-[2px] py-0.5 touch-pan-y"
-                      style={{ WebkitOverflowScrolling: 'touch' }}
-                    >
-                      {sortedWorkspaces.map(ws => {
-                        const isActive = ws.id === activeWorkspaceId && !isSearchPageOpen && !isNotesPageOpen && !isTasksPageOpen && !isRecycleBinOpen && !isAnalyticsPageOpen;
-                        return (
-                          <div
-                            key={ws.id}
-                            id={`mobile-sidebar-workspace-${ws.id}`}
-                            className={`relative group w-full h-[32px] min-h-[32px] shrink-0 flex items-center justify-between rounded-md transition-all duration-150 ${
-                              isActive
-                                ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                                : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                          >
-                            <div
-                              onClick={() => {
-                                setActiveWorkspaceId(ws.id);
-                                setIsSearchPageOpen(false);
-                                setIsNotesPageOpen(false);
-                                setIsTasksPageOpen(false);
-                                setIsAnalyticsPageOpen(false);
-                                setIsRecycleBinOpen(false);
-                                setSidebarCollapsed(true);
-                              }}
-                              className="flex-1 h-[32px] px-2 flex items-center gap-2 truncate min-w-0 cursor-pointer pr-2"
-                            >
-                              {ws.isPinned ? (
-                                <Pin className={`w-[15px] h-[15px] shrink-0 ${isActive ? 'text-white fill-white' : 'text-red-600 fill-red-600 dark:text-red-500 dark:fill-red-500'}`} />
-                              ) : (
-                                <BookOpen className={`w-[17px] h-[17px] shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} strokeWidth={1.75} />
-                              )}
-                              <span className={`truncate font-serif text-[13px] leading-tight ${isActive ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>
-                                {ws.name}
-                              </span>
-                            </div>
-
-                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-30 transition-all duration-150 shrink-0">
-
-                              <button
-                                type="button"
-                                onClick={(e) => toggleWorkspaceMenu(ws.id, e)}
-                                className={`w-6 h-6 flex items-center justify-center rounded-md transition-colors cursor-pointer workspace-menu-btn ${
-                                  isActive
-                                    ? activeMenuWorkspaceId === ws.id
-                                      ? 'bg-white/25 text-white'
-                                      : 'text-white/90 hover:text-white hover:bg-white/20'
-                                    : activeMenuWorkspaceId === ws.id
-                                      ? 'bg-slate-200/70 text-[#0F172A]'
-                                      : 'text-[#64748B] hover:text-[#0F172A] hover:bg-slate-200/60'
-                                }`}
-                                title="Options"
-                              >
-                                <MoreVertical className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Section 3: Bottom Preferences & Profile (Fixed Footer) */}
-                <div className="px-2 pb-2 pt-1 flex flex-col gap-[2px] shrink-0 bg-white">
-                  <div className="px-2 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none">
-                    Preferences
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleExportJSON();
-                      setSidebarCollapsed(true);
-                    }}
-                    className="w-full h-[32px] px-2 rounded-md flex items-center gap-2 text-slate-700 hover:bg-slate-100 hover:text-slate-950 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Download className="w-[17px] h-[17px] shrink-0 text-slate-500" strokeWidth={1.75} />
-                    <span className="truncate font-serif text-[13px] leading-tight font-medium text-[#334155]">Export</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fileInputRef.current?.click();
-                      setSidebarCollapsed(true);
-                    }}
-                    className="w-full h-[32px] px-2 rounded-md flex items-center gap-2 text-slate-700 hover:bg-slate-100 hover:text-slate-950 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Upload className="w-[17px] h-[17px] shrink-0 text-slate-500" strokeWidth={1.75} />
-                    <span className="truncate font-serif text-[13px] leading-tight font-medium text-[#334155]">Import</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRecycleBinOpen(true);
-                      setIsTasksPageOpen(false);
-                      setIsNotesPageOpen(false);
-                      setIsSearchPageOpen(false);
-                      setIsAnalyticsPageOpen(false);
-                      setSidebarCollapsed(true);
-                    }}
-                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
-                      isRecycleBinOpen
-                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
-                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Trash2
-                        className={`w-[17px] h-[17px] shrink-0 ${
-                          isRecycleBinOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`truncate font-serif text-[13px] leading-tight ${isRecycleBinOpen ? 'font-semibold text-white' : 'font-medium text-[#334155] dark:text-slate-200'}`}>Trash</span>
-                    </div>
-                    {(deletedTopics.length > 0 || deletedWorkspaces.length > 0) && (
-                      <span
-                        className={`px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold ${
-                          isRecycleBinOpen
-                            ? 'bg-white/20 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80'
-                        }`}
-                      >
-                        {deletedTopics.length + deletedWorkspaces.length}
-                      </span>
-                    )}
-                  </button>
-
-                  <div className="h-2 shrink-0" />
-
-                  {/* Mobile Drawer Bottom Minimal 2-Line User Profile + Settings Gear */}
-                  <div className="relative user-profile-dropdown-container flex items-center gap-2 w-full">
-                    {currentUser && (
-                      <UserProfilePopover
-                        isOpen={profileMenuTarget === 'sidebar'}
-                        onClose={() => setProfileMenuTarget(null)}
-                        currentUser={currentUser}
-                        isOnline={isOnline}
-                        currentStreak={streakData.currentStreak}
-                        dailyGoalPercent={dailyGoalPercent}
-                        onOpenEditProfile={() => setIsEditProfileOpen(true)}
-                        onChangePassword={handleChangePassword}
-                        onSwitchAccount={handleSwitchAccount}
-                        onSignOut={handleSignOut}
-                        position="sidebar"
-                      />
-                    )}
-
-                    {currentUser ? (
-                      <div 
-                        onClick={() => {
-                          setProfileMenuTarget(prev => prev === 'sidebar' ? null : 'sidebar');
-                        }}
-                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-2 select-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                      >
-                        <div className="relative w-7 h-7 shrink-0">
-                          <div className="w-7 h-7 rounded-full overflow-hidden border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-                            {currentUser.photoURL ? (
-                              <img
-                                src={currentUser.photoURL}
-                                alt={currentUser.displayName || 'Avatar'}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gradient-to-tr from-[#3B82F6] to-[#1D4ED8] text-white font-black text-[11px] flex items-center justify-center uppercase">
-                                {currentUser.displayName?.[0] || currentUser.email?.[0] || 'U'}
-                              </div>
-                            )}
-                          </div>
-                          {/* Live Cloud Sync Indicator Dot (Matches Header) */}
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-3xs pointer-events-none transition-colors ${
-                              isOnline ? 'bg-emerald-500' : 'bg-amber-500'
-                            }`}
-                            title={isOnline ? 'Cloud Synced' : 'Offline Mode (Local Cache)'}
-                          />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200 truncate leading-tight">
-                            {currentUser.displayName || 'Study Flow User'}
-                          </div>
-                          <div className="text-[9px] text-slate-400 dark:text-slate-400 truncate leading-tight mt-0.5">
-                            {currentUser.email || (isOnline ? 'Cloud Synced' : 'Offline')}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAuthModalOpen(true);
-                          setSidebarCollapsed(true);
-                        }}
-                        className="flex-1 h-[32px] px-2 rounded-md bg-blue-50/90 text-[#2563EB] text-[12.5px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer hover:bg-blue-100 transition-colors"
-                      >
-                        <LogIn className="w-[17px] h-[17px]" strokeWidth={1.75} />
-                        <span>Sign In</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsSettingsOpen(true);
-                        setSidebarCollapsed(true);
-                      }}
-                      className="w-7 h-7 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer shrink-0"
-                      title="Settings"
-                    >
-                      <Settings className="w-[17px] h-[17px]" strokeWidth={1.75} />
-                    </button>
-                  </div>
-                </div>
-              </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Desktop Left Sidebar (255px / 56px) - Google Gemini Web Style Material Eased Sidebar */}
-      <aside
-        className={`hidden md:flex flex-col shrink-0 select-none font-sans static z-20 border-r border-[#E5EAF2] dark:border-slate-800 bg-white dark:bg-slate-900 h-[100vh] transition-[width] duration-280 ease-[cubic-bezier(0.2,0,0,1)] ${
-          sidebarCollapsed ? 'w-[56px] overflow-hidden' : 'w-[255px]'
-        }`}
-        style={{ height: '100vh' }}
-      >
-        {/* Brand Header (72px height) */}
-        <div className="h-[72px] px-2 flex items-center shrink-0 relative z-50 overflow-visible">
-          <div
-            className={`w-full h-[36px] flex items-center select-none rounded-lg transition-colors group relative ${
-              sidebarCollapsed ? 'justify-center px-0 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 cursor-pointer' : 'px-1.5 cursor-default'
-            }`}
-            onClick={() => {
-              if (sidebarCollapsed) {
-                setTooltipData(null);
-                setSidebarCollapsed(false);
-              }
-            }}
-            data-tooltip={sidebarCollapsed && !suppressSidebarTooltip ? "Expand sidebar" : undefined}
-            data-tooltip-side="right"
-          >
-            <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 min-w-0 flex-1 pr-16'}`}>
-              {/* Brand logo icon: 100% stationary anchor */}
-              <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                <div className="preserve-color relative w-[23px] h-[23px] flex items-center justify-center shrink-0">
-                  <div className="absolute top-0 left-0 w-[16px] h-[16px] bg-[#2563EB] rounded-[4px]"></div>
-                  <div className="absolute bottom-0 right-0 w-[16px] h-[16px] bg-[#6366F1]/90 backdrop-blur-[2px] rounded-[4px] mix-blend-multiply dark:mix-blend-screen dark:opacity-90"></div>
-                </div>
-              </div>
-              
-              {/* Brand title - Gemini style overflow reveal */}
-              <div className="relative" data-accent-picker-container="desktop">
-                <span
-                  className={`font-[700] text-[16px] leading-[22px] text-[#101828] dark:text-slate-100 tracking-tight whitespace-nowrap transition-opacity duration-200 ease-out flex items-center ${
-                    sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                  }`}
-                >
-                  Study&nbsp;
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsAccentQuickPickerOpen(prev => !prev);
-                    }}
-                    className="accent-picker-toggle-btn brand-flow-highlight font-extrabold cursor-pointer hover:opacity-80 active:scale-95 transition-all inline-flex items-center rounded-md px-1 py-0.5 -mx-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    title="Click to choose accent color"
-                  >
-                    Flow
-                  </button>
-                </span>
-
-                <AnimatePresence>
-                  {isAccentQuickPickerOpen && !sidebarCollapsed && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.92, y: 4 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.92, y: 4 }}
-                      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                      className="accent-picker-popover absolute left-0 top-full mt-2.5 z-[99999] p-2.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-950/20 flex flex-col gap-2 min-w-[210px]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between px-1 text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                        <span>Accent Color</span>
-                        <button
-                          type="button"
-                          onClick={() => setIsAccentQuickPickerOpen(false)}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between gap-1.5 px-0.5">
-                        {ACCENT_COLOR_OPTIONS.map((opt) => {
-                          const isSelected = (userSettings.primaryColor || 'blue') === opt.id;
-                          return (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onPointerDown={(e) => {
-                                e.stopPropagation();
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectAccentColor(opt.id);
-                              }}
-                              className={`preserve-color relative w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-115 active:scale-95 cursor-pointer shadow-xs ${
-                                isSelected ? 'ring-2 ring-offset-2 ring-slate-400 dark:ring-offset-slate-900 scale-110' : 'hover:opacity-90'
-                              }`}
-                              style={{ backgroundColor: opt.color }}
-                              title={opt.label}
-                            >
-                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3] text-white drop-shadow-xs" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-
-            {/* Dark / Light Mode Switch button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleThemeMode();
-              }}
-              data-tooltip={resolveEffectiveTheme(userSettings.theme || (userSettings.darkMode ? 'dark' : 'light')) === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              data-tooltip-side="bottom"
-              className={`absolute right-9.5 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center border border-[#E5EAF2] dark:border-slate-800 rounded-[8px] text-[#667085] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-150 shrink-0 cursor-pointer ${
-                sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              {resolveEffectiveTheme(userSettings.theme || (userSettings.darkMode ? 'dark' : 'light')) === 'dark' ? (
-                <Sun className="w-3.5 h-3.5 text-amber-400 stroke-[2.2]" />
-              ) : (
-                <Moon className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 stroke-[2.2]" />
-              )}
-            </button>
-
-            {/* Collapse button positioned absolutely to preserve 0-shift on the logo */}
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setTooltipData(null);
-                setSuppressSidebarTooltip(true);
-                setSidebarCollapsed(true);
-                setTimeout(() => setSuppressSidebarTooltip(false), 400);
-              }}
-              data-tooltip="Collapse sidebar"
-              data-tooltip-side="bottom"
-              className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center border border-[#E5EAF2] dark:border-slate-800 rounded-[8px] text-[#667085] dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-150 shrink-0 cursor-pointer ${
-                sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              <ChevronLeft className="w-4 h-4" strokeWidth={1.75} />
-            </button>
-          </div>
-        </div>
-
-        {/* Main Navigation Container (Fixed Views + Scrollable Workspace List only) */}
-        <div className="flex-1 min-h-0 px-2 flex flex-col pt-1 pb-2 overflow-hidden">
-          {/* Section 1: VIEWS / QUICK ACCESS (Fixed at top) */}
-          <div className="flex flex-col gap-[2px] shrink-0">
-            <div
-              className={`px-1.5 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none overflow-hidden whitespace-nowrap transition-opacity duration-200 ${
-                sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              Views
-            </div>
-
-            {/* Search View Button */}
-            <button
-              onClick={() => {
-                setIsSearchPageOpen(prev => {
-                  const next = !prev;
-                  if (next) {
-                    setIsTasksPageOpen(false);
-                    setIsNotesPageOpen(false);
-                    setIsRecycleBinOpen(false);
-                    setIsAnalyticsPageOpen(false);
-                  }
-                  return next;
-                });
-              }}
-              data-tooltip={sidebarCollapsed ? "Search" : undefined}
-              data-tooltip-side="right"
-              className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
-                isSearchPageOpen
-                  ? sidebarCollapsed
-                    ? ''
-                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                  : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
-              } transition-all duration-150 cursor-pointer shrink-0`}
-            >
-              <div
-                className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
-                  isSearchPageOpen && sidebarCollapsed
-                    ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                    : ''
-                }`}
-              >
-                <Search
-                  className={`w-[17px] h-[17px] ${
-                    isSearchPageOpen
-                      ? 'text-white stroke-[2]'
-                      : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
-                  } transition-colors duration-150`}
-                  strokeWidth={1.75}
-                />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] ${
-                  isSearchPageOpen ? 'text-white font-[600]' : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-                } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Search
-              </span>
-              {!sidebarCollapsed && (
-                <kbd
-                  className={`hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 h-[19px] rounded-[4px] border leading-none select-none shrink-0 transition-colors ${
-                    isSearchPageOpen
-                      ? 'bg-white/20 border-white/30 text-white shadow-none'
-                      : 'bg-slate-100/90 dark:bg-slate-800 border-slate-200/90 dark:border-slate-700 text-slate-500 dark:text-slate-400 shadow-3xs group-hover:border-slate-300 dark:group-hover:border-slate-600'
-                  }`}
-                >
-                  <Command className={`w-[10.5px] h-[10.5px] stroke-[2.3] shrink-0 ${isSearchPageOpen ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
-                  <span className={`text-[10px] font-bold leading-none ${isSearchPageOpen ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>K</span>
-                </kbd>
-              )}
-            </button>
-
-            {/* Notes View Button */}
-            <button
-              onClick={() => {
-                setIsNotesPageOpen(true);
-                setIsTasksPageOpen(false);
-                setIsSearchPageOpen(false);
-                setIsRecycleBinOpen(false);
-                setIsAnalyticsPageOpen(false);
-              }}
-              data-tooltip={sidebarCollapsed ? "Notes" : undefined}
-              data-tooltip-side="right"
-              className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
-                isNotesPageOpen
-                  ? sidebarCollapsed
-                    ? ''
-                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                  : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
-              } transition-all duration-150 cursor-pointer shrink-0`}
-            >
-              <div
-                className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
-                  isNotesPageOpen && sidebarCollapsed
-                    ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                    : ''
-                }`}
-              >
-                <NotebookPen
-                  className={`w-[17px] h-[17px] ${
-                    isNotesPageOpen
-                      ? 'text-white stroke-[2]'
-                      : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
-                  } transition-colors duration-150`}
-                  strokeWidth={1.75}
-                />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] ${
-                  isNotesPageOpen ? 'text-white font-[600]' : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-                } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Notes
-              </span>
-              {notes.length > 0 && !sidebarCollapsed && (
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
-                    isNotesPageOpen
-                      ? 'bg-white/20 border-white/30 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
-                  }`}
-                >
-                  {notes.length}
-                </span>
-              )}
-            </button>
-
-            {/* Tasks View Button */}
-            <button
-              onClick={() => {
-                setIsTasksPageOpen(true);
-                setIsNotesPageOpen(false);
-                setIsSearchPageOpen(false);
-                setIsRecycleBinOpen(false);
-                setIsAnalyticsPageOpen(false);
-              }}
-              data-tooltip={sidebarCollapsed ? "Tasks" : undefined}
-              data-tooltip-side="right"
-              className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
-                isTasksPageOpen
-                  ? sidebarCollapsed
-                    ? ''
-                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                  : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
-              } transition-all duration-150 cursor-pointer shrink-0`}
-            >
-              <div
-                className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
-                  isTasksPageOpen && sidebarCollapsed
-                    ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                    : ''
-                }`}
-              >
-                <ListTodo
-                  className={`w-[17px] h-[17px] ${
-                    isTasksPageOpen
-                      ? 'text-white stroke-[2]'
-                      : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
-                  } transition-colors duration-150`}
-                  strokeWidth={1.75}
-                />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] ${
-                  isTasksPageOpen ? 'text-white font-[600]' : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-                } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Tasks
-              </span>
-              {standaloneTasks.filter(t => !t.completed).length > 0 && !sidebarCollapsed && (
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
-                    isTasksPageOpen
-                      ? 'bg-white/20 border-white/30 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
-                  }`}
-                >
-                  {standaloneTasks.filter(t => !t.completed).length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                showToast('Showing starred topics');
-              }}
-              data-tooltip={sidebarCollapsed ? "Starred" : undefined}
-              data-tooltip-side="right"
-              className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200 transition-all duration-150 cursor-pointer shrink-0"
-            >
-              <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                <Star className="w-[17px] h-[17px] text-slate-500 dark:text-slate-400 group-hover:text-amber-500 group-hover:fill-amber-500 transition-colors duration-150" strokeWidth={1.75} />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Starred
-              </span>
-            </button>
-
-            <button
-              onClick={() => setIsShortcutsOpen(true)}
-              data-tooltip={sidebarCollapsed ? "Shortcut & Guide" : undefined}
-              data-tooltip-side="right"
-              className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200 transition-all duration-150 cursor-pointer shrink-0"
-            >
-              <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                <Keyboard className="w-[17px] h-[17px] text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors duration-150" strokeWidth={1.75} />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Shortcut & Guide
-              </span>
-            </button>
-
-            <button
-              onClick={() => {
-                setIsAnalyticsPageOpen(prev => {
-                  const next = !prev;
-                  if (next) {
-                    setIsTasksPageOpen(false);
-                    setIsSearchPageOpen(false);
-                    setIsNotesPageOpen(false);
-                    setIsRecycleBinOpen(false);
-                  }
-                  return next;
-                });
-              }}
-              data-tooltip={sidebarCollapsed ? "Analytics" : undefined}
-              data-tooltip-side="right"
-              className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
-                isAnalyticsPageOpen
-                  ? sidebarCollapsed
-                    ? ''
-                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                  : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
-              } transition-all duration-150 cursor-pointer shrink-0`}
-            >
-              <div
-                className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
-                  isAnalyticsPageOpen && sidebarCollapsed
-                    ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                    : ''
-                }`}
-              >
-                <TrendingUp
-                  className={`w-[17px] h-[17px] ${
-                    isAnalyticsPageOpen
-                      ? 'text-white stroke-[2]'
-                      : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
-                  } transition-colors duration-150`}
-                  strokeWidth={1.75}
-                />
-              </div>
-              <span
-                className={`truncate leading-tight block font-serif text-[13px] ${
-                  isAnalyticsPageOpen ? 'text-white font-[600]' : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-                } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-              >
-                Analytics
-              </span>
-            </button>
-          </div>
-
-          {/* Section 2: WORKSPACES Header (Fixed) */}
-          <div className="h-2 shrink-0" />
-          
-          <div
-            onClick={() => {
-              if (!sidebarCollapsed && !isReorderingWorkspaces) {
-                toggleWorkspacesCollapse();
-              }
-            }}
-            className={`relative group/ws-header w-full h-6 flex items-center justify-between text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none overflow-hidden whitespace-nowrap transition-opacity duration-200 shrink-0 px-1.5 ${
-              sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            } ${!isReorderingWorkspaces ? 'cursor-pointer hover:text-slate-600' : 'cursor-default'}`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0 pr-14">
-              {isReorderingWorkspaces ? (
-                <span className="text-[#2563EB] font-extrabold flex items-center gap-1.5">
-                  <ReorderWorkspacesIcon className="w-3.5 h-3.5" />
-                  <span>Reorder</span>
-                </span>
-              ) : (
-                <>
-                  <span>Workspaces({sortedWorkspaces.length})</span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isWorkspacesCollapsed ? '-rotate-90 text-slate-400' : 'rotate-0 text-slate-400 group-hover/ws-header:text-slate-600'}`} />
-                </>
-              )}
-            </div>
-
-            {!isReorderingWorkspaces ? (
-              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/ws-header:opacity-100 transition-opacity shrink-0 z-10">
-                {workspaces.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startReorderingWorkspaces();
-                    }}
-                    className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-[#2563EB] hover:bg-blue-50 transition-all cursor-pointer"
-                    title="Reorder Workspaces"
-                  >
-                    <ReorderWorkspacesIcon className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsNewWorkspaceOpen(true);
-                  }}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-[#2563EB] hover:bg-blue-50 transition-all cursor-pointer"
-                  title="New Workspace"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 shrink-0 z-10">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCancelReorder();
-                  }}
-                  className="px-1.5 py-0.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-[11px] font-medium transition-all cursor-pointer"
-                  title="Cancel Reordering"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDoneReorder();
-                  }}
-                  className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-[#2563EB] text-white hover:bg-blue-700 text-[11px] font-bold transition-all cursor-pointer shadow-3xs"
-                  title="Done Reordering"
-                >
-                  <Check className="w-3 h-3 stroke-[2.5]" />
-                  <span>Done</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Workspaces Scrollable Section (SCROLL IS STRICTLY LIMITED HERE) */}
-          <div
-            className={`flex-1 min-h-0 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              !isWorkspacesCollapsed || sidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none max-h-0'
-            }`}
-          >
-            {isReorderingWorkspaces && !sidebarCollapsed ? (
-              /* REORDERING MODE (Master Flat Sequence with Drag & Drop and Instant Up/Down buttons) */
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain custom-scrollbar flex flex-col gap-[2px] py-0.5">
-                {workspaces.map((ws, idx) => {
-                  const isDragging = draggedWsIdx === idx;
-                  const isDragOver = dragOverWsIdx === idx && draggedWsIdx !== idx;
-                  const isDragBelow = draggedWsIdx !== null && draggedWsIdx < idx;
-                  return (
-                    <div
-                      key={ws.id}
-                      data-reorder-index={idx}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDrop={(e) => handleDrop(e, idx)}
-                      onDragEnd={handleDragEnd}
-                      className={`relative group w-full h-[32px] min-h-[32px] shrink-0 flex items-center justify-between rounded-md px-1.5 gap-1.5 transition-all duration-150 select-none outline-none focus:outline-none focus:ring-0 ${
-                        isDragging
-                          ? 'opacity-40 scale-[0.98] bg-blue-50/80 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700'
-                          : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60 active:bg-slate-200/60 dark:active:bg-slate-700/60'
-                      }`}
-                    >
-                      {isDragOver && (
-                        <div
-                          className={`absolute left-1 right-1 h-[2px] bg-[#2563EB] dark:bg-blue-500 rounded-full shadow-sm shadow-blue-500/50 z-30 pointer-events-none ${
-                            isDragBelow ? '-bottom-[2px]' : '-top-[2px]'
-                          }`}
-                        />
-                      )}
-
-                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <div
-                          onTouchStart={(e) => handleTouchStart(e, idx)}
-                          onTouchMove={handleTouchMove}
-                          onTouchEnd={handleTouchEnd}
-                          className="p-0.5 -ml-0.5 cursor-grab active:cursor-grabbing touch-none flex items-center"
-                          title="Drag to reorder"
-                        >
-                          <GripVertical className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-200 shrink-0" />
-                        </div>
-                        <BookOpen className="w-[15px] h-[15px] text-slate-500 dark:text-slate-400 shrink-0" strokeWidth={1.75} />
-                        <span className="truncate font-serif text-[13px] font-medium text-slate-800 dark:text-slate-200 leading-tight">
-                          {ws.name}
-                        </span>
-                        {ws.isPinned && (
-                          <Pin className="w-3 h-3 text-red-600 fill-red-600 dark:text-red-500 dark:fill-red-500 shrink-0 ml-0.5" title="Pinned" />
-                        )}
-                      </div>
-
-                      {/* Quick Up/Down Buttons for Desktop precision */}
-                      <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100">
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          onClick={() => handleMoveWorkspace(idx, idx - 1)}
-                          className={`p-0.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-700 transition-colors outline-none focus:outline-none focus:ring-0 ${
-                            idx === 0 ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'
-                          }`}
-                          title="Move up"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === workspaces.length - 1}
-                          onClick={() => handleMoveWorkspace(idx, idx + 1)}
-                          className={`p-0.5 rounded text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/80 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-700 transition-colors outline-none focus:outline-none focus:ring-0 ${
-                            idx === workspaces.length - 1 ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'
-                          }`}
-                          title="Move down"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain custom-scrollbar flex flex-col gap-[2px] py-0.5">
-              {sortedWorkspaces.map(ws => {
-                const isActive = ws.id === activeWorkspaceId && !isSearchPageOpen && !isNotesPageOpen && !isTasksPageOpen && !isRecycleBinOpen && !isAnalyticsPageOpen;
-                const initialChar = getWorkspaceInitial(ws.name);
-                const isBangla = /[\u0980-\u09FF]/.test(initialChar);
-                const initialFontSize = isBangla
-                  ? initialChar.length > 2
-                    ? 'text-[11px] leading-none'
-                    : initialChar.length > 1
-                    ? 'text-[12px] leading-none tracking-tight'
-                    : 'text-[12.5px] leading-none'
-                  : 'text-[12.5px] leading-none';
-
-                return (
-                  <div
-                    key={ws.id}
-                    id={`sidebar-workspace-${ws.id}`}
-                    className={`relative group w-full h-[32px] min-h-[32px] shrink-0 flex items-center justify-between rounded-md transition-all duration-150 ${
-                      activeMenuWorkspaceId === ws.id ? 'z-[100]' : 'z-10'
-                    } ${
-                      !isActive && !sidebarCollapsed ? 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80' : ''
-                    }`}
-                  >
-                    {/* Smooth sliding background pill - Solid Primary Blue with Subtle Hover Darken */}
-                    {isActive && !sidebarCollapsed && (
-                      <motion.div
-                        layoutId="workspace-active-pill"
-                        transition={{ type: 'spring', stiffness: 450, damping: 34, mass: 0.6 }}
-                        className="absolute inset-0 rounded-md bg-[#2563EB] group-hover:bg-[#1D4ED8] shadow-sm shadow-blue-500/25 transition-colors duration-150 pointer-events-none"
-                        style={{ zIndex: 0 }}
-                      />
-                    )}
-
-                    <div
-                      onClick={() => {
-                        setActiveWorkspaceId(ws.id);
-                        setIsSearchPageOpen(false);
-                        setIsNotesPageOpen(false);
-                        setIsTasksPageOpen(false);
-                        setIsAnalyticsPageOpen(false);
-                        setIsRecycleBinOpen(false);
-                      }}
-                      data-tooltip={sidebarCollapsed || ws.name.length > 15 ? ws.name : undefined}
-                      data-tooltip-side={sidebarCollapsed ? "right" : "bottom"}
-                      className="relative z-10 w-full h-full rounded-md flex items-center px-1.5 cursor-pointer select-none transition-all duration-150"
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-                        {/* Fixed Icon Anchor - 100% Symmetrical Pure Smooth Crossfade */}
-                        <div className="w-7 h-7 flex items-center justify-center shrink-0 relative">
-                          {/* Collapsed Initial Letter Avatar - Solid Primary Blue with Subtle Hover Darken */}
-                          <div
-                            className={`absolute inset-0 rounded-md flex items-center justify-center font-serif font-bold ${initialFontSize} transition-all duration-150 ease-out select-none ${
-                              sidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                            } ${
-                              isActive
-                                ? 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-950 dark:hover:text-white'
-                            }`}
-                          >
-                            {ws.isPinned ? (
-                              <Pin className={`w-3 h-3 ${isActive ? 'text-white fill-white' : 'text-red-600 fill-red-600 dark:text-red-500 dark:fill-red-500'}`} />
-                            ) : (
-                              initialChar
-                            )}
-                          </div>
-
-                          {/* Expanded Folder / Pin Icon */}
-                          <div
-                            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-out ${
-                              sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                            }`}
-                          >
-                            {ws.isPinned ? (
-                              <Pin
-                                className={`w-[15px] h-[15px] shrink-0 transition-colors duration-150 ${
-                                  isActive
-                                    ? 'text-white fill-white'
-                                    : 'text-red-600 fill-red-600 dark:text-red-500 dark:fill-red-500'
-                                }`}
-                              />
-                            ) : (
-                              <BookOpen
-                                className={`w-[17px] h-[17px] shrink-0 transition-colors duration-150 ${
-                                  isActive
-                                    ? 'text-white fill-transparent'
-                                    : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
-                                }`}
-                                strokeWidth={1.75}
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Full-width text reveal with natural ellipsis right up to the edge */}
-                        <span
-                          className={`truncate leading-tight font-serif text-[13px] transition-all duration-150 ease-out flex-1 text-left ${
-                            sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none hidden' : 'min-w-0 flex-1 whitespace-nowrap opacity-100 block'
-                          } ${
-                            isActive
-                              ? 'font-[600] text-white'
-                              : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-                          }`}
-                        >
-                          {ws.name}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Google Antigravity Style Floating Action Overlay (3-Dot Menu) */}
-                    {!sidebarCollapsed && (
-                      <div
-                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 flex items-center gap-0.5 z-30 transition-all duration-150 ${
-                          activeMenuWorkspaceId === ws.id
-                            ? 'opacity-100 pointer-events-auto'
-                            : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
-                        }`}
-                      >
-
-                        <button
-                          type="button"
-                          onClick={(e) => toggleWorkspaceMenu(ws.id, e)}
-                          className={`w-6 h-6 flex items-center justify-center rounded-md transition-all cursor-pointer workspace-menu-btn ${
-                            isActive
-                              ? activeMenuWorkspaceId === ws.id
-                                ? 'opacity-100 bg-white/25 text-white'
-                                : 'text-white/80 hover:text-white hover:bg-white/20 opacity-0 group-hover:opacity-100'
-                              : activeMenuWorkspaceId === ws.id
-                                ? 'opacity-100 bg-slate-300/80 dark:bg-slate-700 text-[#0F172A] dark:text-white'
-                                : 'text-[#64748B] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-300/80 dark:hover:bg-slate-700 opacity-0 group-hover:opacity-100'
-                          }`}
-                          data-tooltip="Options"
-                          data-tooltip-side="top"
-                        >
-                          <MoreVertical className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        </div>
-
-        {/* Section 3: Bottom Preferences & Data */}
-        <div className="px-2 pt-2 pb-1 flex flex-col gap-[2px] shrink-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-          <div
-            className={`px-1.5 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none overflow-hidden whitespace-nowrap transition-opacity duration-200 ${
-              sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          >
-            Preferences
-          </div>
-
-          <button
-            onClick={handleExportJSON}
-            data-tooltip={sidebarCollapsed ? "Export" : undefined}
-            data-tooltip-side="right"
-            className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200 transition-all duration-150 cursor-pointer shrink-0"
-          >
-            <div className="w-7 h-7 flex items-center justify-center shrink-0">
-              <Download className="w-[17px] h-[17px] text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors duration-150" strokeWidth={1.75} />
-            </div>
-            <span
-              className={`truncate leading-tight block font-serif text-[13px] font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              Export
-            </span>
-          </button>
-          
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            data-tooltip={sidebarCollapsed ? "Import" : undefined}
-            data-tooltip-side="right"
-            className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200 transition-all duration-150 cursor-pointer shrink-0"
-          >
-            <div className="w-7 h-7 flex items-center justify-center shrink-0">
-              <Upload className="w-[17px] h-[17px] text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors duration-150" strokeWidth={1.75} />
-            </div>
-            <span
-              className={`truncate leading-tight block font-serif text-[13px] font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              Import
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              setIsRecycleBinOpen(true);
-              setIsTasksPageOpen(false);
-              setIsNotesPageOpen(false);
-              setIsSearchPageOpen(false);
-              setIsAnalyticsPageOpen(false);
-            }}
-            data-tooltip={sidebarCollapsed ? "Trash" : undefined}
-            data-tooltip-side="right"
-            className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
-              isRecycleBinOpen
-                ? sidebarCollapsed
-                  ? ''
-                  : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
-            } transition-all duration-150 cursor-pointer shrink-0`}
-          >
-            <div
-              className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
-                isRecycleBinOpen && sidebarCollapsed
-                  ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
-                  : ''
-              }`}
-            >
-              <Trash2
-                className={`w-[17px] h-[17px] transition-colors duration-150 ${
-                  isRecycleBinOpen
-                    ? 'text-white'
-                    : 'text-slate-500 dark:text-slate-400 group-hover:text-red-500'
-                }`}
-                strokeWidth={1.75}
-              />
-            </div>
-            <span
-              className={`truncate leading-tight block font-serif text-[13px] ${
-                isRecycleBinOpen ? 'font-[600] text-white' : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
-              } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
-                sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
-              Trash
-            </span>
-            {(deletedTopics.length > 0 || deletedWorkspaces.length > 0 || deletedNotes.length > 0 || deletedSections.length > 0 || deletedTasks.length > 0 || deletedTopicNotes.length > 0 || deletedTopicLinks.length > 0) && !sidebarCollapsed && (
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
-                  isRecycleBinOpen
-                    ? 'bg-white/20 border-white/30 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
-                }`}
-              >
-                {deletedTopics.length + deletedWorkspaces.length + deletedNotes.length + deletedSections.length + deletedTasks.length + deletedTopicNotes.length + deletedTopicLinks.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Section 4: Minimalist User Profile + Settings Bottom Row (100% Aligned with Sidebar Icons) */}
-        <div className="relative user-profile-dropdown-container px-2 pt-1 pb-2 flex flex-col shrink-0 bg-white dark:bg-slate-900">
-          {currentUser && (
-            <UserProfilePopover
-              isOpen={profileMenuTarget === 'sidebar'}
-              onClose={() => setProfileMenuTarget(null)}
-              currentUser={currentUser}
-              isOnline={isOnline}
-              currentStreak={streakData.currentStreak}
-              dailyGoalPercent={dailyGoalPercent}
-              onOpenEditProfile={() => setIsEditProfileOpen(true)}
-              onChangePassword={handleChangePassword}
-              onSwitchAccount={handleSwitchAccount}
-              onSignOut={handleSignOut}
-              position="desktop-sidebar"
-              isCollapsed={sidebarCollapsed}
-            />
-          )}
-
-          {currentUser ? (
-            <div className={`w-full flex items-center ${sidebarCollapsed ? 'flex-col-reverse gap-1.5' : 'gap-1'}`}>
-              <button
-                type="button"
-                onClick={() => setProfileMenuTarget(prev => prev === 'sidebar' ? null : 'sidebar')}
-                data-tooltip={sidebarCollapsed ? (currentUser.displayName || currentUser.email || "Profile") : undefined}
-                data-tooltip-side="right"
-                className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-2.5 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 transition-all duration-150 cursor-pointer select-none text-left"
-              >
-                {/* 100% Exact Centered Icon Container */}
-                <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                  <div className="relative w-[24px] h-[24px]">
-                    <div className="w-full h-full rounded-full overflow-hidden border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-                      {currentUser.photoURL ? (
-                        <img
-                          src={currentUser.photoURL}
-                          alt={currentUser.displayName || 'Avatar'}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-tr from-[#3B82F6] to-[#1D4ED8] text-white font-black text-[11px] flex items-center justify-center uppercase">
-                          {currentUser.displayName?.[0] || currentUser.email?.[0] || 'U'}
-                        </div>
-                      )}
-                    </div>
-                    {/* Live Cloud Sync Indicator Dot (Matches Header) */}
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-3xs pointer-events-none transition-colors ${
-                        isOnline ? 'bg-emerald-500' : 'bg-amber-500'
-                      }`}
-                      title={isOnline ? 'Cloud Synced' : 'Offline Mode (Local Cache)'}
-                    />
-                  </div>
-                </div>
-
-                {/* Minimal 2-Line Profile Details (Reveals on expanded) */}
-                <div
-                  className={`min-w-0 flex-1 transition-opacity duration-150 ${
-                    sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                  }`}
-                >
-                  {/* Line 1: User Name */}
-                  <div className="text-[11.5px] font-bold text-slate-800 dark:text-slate-200 truncate leading-tight group-hover:text-slate-950 dark:group-hover:text-white">
-                    {currentUser.displayName || 'Study Flow User'}
-                  </div>
-                  {/* Line 2: Email or Cloud Status */}
-                  <div className="text-[9px] text-slate-400 dark:text-slate-400 truncate leading-tight mt-0.5">
-                    {currentUser.email || (isOnline ? 'Cloud Synced' : 'Offline')}
-                  </div>
-                </div>
-              </button>
-
-              {/* Settings Gear Button */}
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                data-tooltip={sidebarCollapsed ? "Settings" : undefined}
-                data-tooltip-side="right"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/75 dark:hover:bg-slate-800/80 transition-colors cursor-pointer shrink-0"
-                title="Settings"
-              >
-                <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                  <Settings className="w-[17px] h-[17px]" strokeWidth={1.75} />
-                </div>
-              </button>
-            </div>
-          ) : (
-            <div className={`w-full flex items-center ${sidebarCollapsed ? 'flex-col-reverse gap-1.5' : 'gap-1'}`}>
-              <button
-                type="button"
-                onClick={() => setIsAuthModalOpen(true)}
-                data-tooltip={sidebarCollapsed ? "Sign In" : undefined}
-                data-tooltip-side="right"
-                className="group w-full h-[32px] rounded-md flex items-center px-1.5 gap-2.5 hover:bg-blue-50/80 text-[#2563EB] transition-all duration-150 cursor-pointer select-none text-left"
-              >
-                <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                  <LogIn className="w-[17px] h-[17px] text-[#2563EB]" strokeWidth={1.75} />
-                </div>
-                <span
-                  className={`text-[12.5px] leading-tight font-semibold text-[#2563EB] whitespace-nowrap truncate transition-opacity duration-150 ${
-                    sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-                  }`}
-                >
-                  Sign In
-                </span>
-              </button>
-
-              {/* Settings Gear Button beside Sign In */}
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                data-tooltip={sidebarCollapsed ? "Settings" : undefined}
-                data-tooltip-side="right"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-200/75 transition-colors cursor-pointer shrink-0"
-                title="Settings"
-              >
-                <div className="w-7 h-7 flex items-center justify-center shrink-0">
-                  <Settings className="w-[17px] h-[17px]" strokeWidth={1.75} />
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
-      </aside>
+      <AppSidebar
+        sidebarCollapsed={sidebarCollapsed}
+        setSidebarCollapsed={setSidebarCollapsed}
+        isAccentQuickPickerOpen={isAccentQuickPickerOpen}
+        setIsAccentQuickPickerOpen={setIsAccentQuickPickerOpen}
+        userSettings={userSettings}
+        handleSelectAccentColor={handleSelectAccentColor}
+        handleToggleThemeMode={handleToggleThemeMode}
+        isSearchPageOpen={isSearchPageOpen}
+        setIsSearchPageOpen={setIsSearchPageOpen}
+        isNotesPageOpen={isNotesPageOpen}
+        setIsNotesPageOpen={setIsNotesPageOpen}
+        isTasksPageOpen={isTasksPageOpen}
+        setIsTasksPageOpen={setIsTasksPageOpen}
+        isRecycleBinOpen={isRecycleBinOpen}
+        setIsRecycleBinOpen={setIsRecycleBinOpen}
+        isAnalyticsPageOpen={isAnalyticsPageOpen}
+        setIsAnalyticsPageOpen={setIsAnalyticsPageOpen}
+        notes={notes}
+        standaloneTasks={standaloneTasks}
+        showToast={showToast}
+        setIsShortcutsOpen={setIsShortcutsOpen}
+        isReorderingWorkspaces={isReorderingWorkspaces}
+        toggleWorkspacesCollapse={toggleWorkspacesCollapse}
+        isWorkspacesCollapsed={isWorkspacesCollapsed}
+        sortedWorkspaces={sortedWorkspaces}
+        workspaces={workspaces}
+        startReorderingWorkspaces={startReorderingWorkspaces}
+        setIsNewWorkspaceOpen={setIsNewWorkspaceOpen}
+        handleCancelReorder={handleCancelReorder}
+        handleDoneReorder={handleDoneReorder}
+        draggedWsIdx={draggedWsIdx}
+        dragOverWsIdx={dragOverWsIdx}
+        handleDragStart={handleDragStart}
+        handleDragOver={handleDragOver}
+        handleDrop={handleDrop}
+        handleDragEnd={handleDragEnd}
+        handleTouchStart={handleTouchStart}
+        handleTouchMove={handleTouchMove}
+        handleTouchEnd={handleTouchEnd}
+        handleMoveWorkspace={handleMoveWorkspace}
+        activeWorkspaceId={activeWorkspaceId}
+        setActiveWorkspaceId={setActiveWorkspaceId}
+        toggleWorkspaceMenu={toggleWorkspaceMenu}
+        activeMenuWorkspaceId={activeMenuWorkspaceId}
+        handleExportJSON={handleExportJSON}
+        fileInputRef={fileInputRef}
+        deletedTopics={deletedTopics}
+        deletedWorkspaces={deletedWorkspaces}
+        deletedNotes={deletedNotes}
+        deletedSections={deletedSections}
+        deletedTasks={deletedTasks}
+        deletedTopicNotes={deletedTopicNotes}
+        deletedTopicLinks={deletedTopicLinks}
+        currentUser={currentUser}
+        profileMenuTarget={profileMenuTarget}
+        setProfileMenuTarget={setProfileMenuTarget}
+        isOnline={isOnline}
+        streakData={streakData}
+        dailyGoalPercent={dailyGoalPercent}
+        setIsEditProfileOpen={setIsEditProfileOpen}
+        handleChangePassword={handleChangePassword}
+        handleSwitchAccount={handleSwitchAccount}
+        handleSignOut={handleSignOut}
+        setIsAuthModalOpen={setIsAuthModalOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
+        suppressSidebarTooltip={suppressSidebarTooltip}
+        setSuppressSidebarTooltip={setSuppressSidebarTooltip}
+        setTooltipData={setTooltipData}
+        ACCENT_COLOR_OPTIONS={ACCENT_COLOR_OPTIONS}
+      />
 
           {/* Centered Main Workspace Wrapper */}
-          <div className="flex-1 w-full h-full relative bg-[#F8FAFC] overflow-y-auto no-scrollbar">
+          <div className="flex-1 w-full h-full relative bg-[#F8FAFC] dark:bg-[#090D16] overflow-y-auto no-scrollbar">
+            {/* Full-Workspace Dynamic Ultra-Soft Ambient Glows (100% Synchronized with User Accent Color) */}
+            <div className="preserve-color absolute inset-0 pointer-events-none z-0 overflow-hidden select-none">
+              {/* 1. Top Ambient Spotlight */}
+              <div className={`preserve-color absolute -top-10 left-1/2 -translate-x-1/2 w-[1100px] h-[550px] bg-gradient-to-b ${getWorkspaceAmbientGlow(userSettings.primaryColor || 'blue')} to-transparent rounded-full blur-3xl opacity-40`}></div>
+              {/* 2. Mid-Right Ambient Aura */}
+              <div className={`preserve-color absolute top-[30%] -right-40 w-[750px] h-[650px] bg-gradient-to-br ${getWorkspaceAmbientGlow(userSettings.primaryColor || 'blue')} to-transparent rounded-full blur-3xl opacity-30`}></div>
+              {/* 3. Lower-Left Ambient Aura */}
+              <div className={`preserve-color absolute top-[62%] -left-40 w-[750px] h-[650px] bg-gradient-to-tr ${getWorkspaceAmbientGlow(userSettings.primaryColor || 'blue')} to-transparent rounded-full blur-3xl opacity-30`}></div>
+            </div>
+
             <AnimatePresence mode="wait" initial={false}>
               {isSearchPageOpen ? (
                 <SearchView
@@ -7613,531 +6296,55 @@ export function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="flex-1 w-full flex flex-col min-h-full"
+              className="flex-1 w-full flex flex-col min-h-full relative z-10"
             >
 
-              {/* 1. TOP FULL-WIDTH FLUSH HEADER (0 GAP, LEFT TO RIGHT, EXACTLY LIKE SEARCH PAGE) */}
-              <header
-                onCopy={e => {
-                  e.preventDefault();
-                }}
-                onCut={e => {
-                  e.preventDefault();
-                }}
-                onSelectStart={e => {
-                  e.preventDefault();
-                }}
-                style={{
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none'
-                }}
-                className="no-copy-header shrink-0 h-[56px] sm:h-[60px] min-h-[56px] px-3.5 sm:px-6 bg-white border-b border-slate-200/80 flex items-center justify-between gap-2 sm:gap-4 z-[999] relative select-none w-full [&_*]:select-none"
-              >
-                
-                {/* LEFT: Mobile Hamburger + Premium Minimalist Text Breadcrumb */}
-                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 workspace-dropdown-container relative z-20">
-
-                  {/* Mobile Hamburger Menu Button (md:hidden with Border & Clean Box) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTooltipData(null);
-                      setIsWorkspaceDropdownOpen(false);
-                      setIsMobileWorkspaceDropdownOpen(false);
-                      setSidebarCollapsed(prev => !prev);
-                    }}
-                    className="md:hidden w-[32px] h-[32px] rounded-lg border border-slate-200/90 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 hover:text-slate-950 flex items-center justify-center shadow-3xs transition-all cursor-pointer select-none shrink-0 mr-0.5"
-                    title={sidebarCollapsed ? "Open sidebar" : "Close sidebar"}
-                  >
-                    <Menu className="w-4 h-4 text-slate-700 stroke-[2.3]" />
-                  </button>
-
-                  {/* Inline Breadcrumb Segment: Workspace Name › Section Name */}
-                  <div className="flex items-center gap-0.5 min-w-0">
-                    {/* 1. Workspace Name Segment (Click to switch workspace) */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTooltipData(null);
-                          setIsWorkspaceDropdownOpen(false);
-                          setIsWorkspaceSwitcherOpen(prev => !prev);
-                        }}
-                        className={`px-1.5 py-0.5 rounded-md text-[13px] sm:text-[13.5px] font-semibold transition-all cursor-pointer truncate max-w-[110px] min-[400px]:max-w-[140px] sm:max-w-[180px] lg:max-w-[220px] focus:outline-none ${
-                          isWorkspaceSwitcherOpen
-                            ? 'bg-[#2563EB] text-white shadow-3xs'
-                            : 'text-slate-700 hover:text-white hover:bg-[#2563EB] active:bg-blue-700'
-                        }`}
-                        title="Switch workspace"
-                      >
-                        {activeWorkspace.name}
-                      </button>
-
-                      {/* Workspace Switcher Popover Dropdown */}
-                      <AnimatePresence>
-                        {isWorkspaceSwitcherOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                            transition={{ duration: 0.12, ease: 'easeOut' }}
-                            className="absolute left-0 top-full mt-2 w-[210px] sm:w-[230px] bg-white border border-slate-200 shadow-xl shadow-slate-900/10 rounded-xl p-1.5 z-50 text-xs select-none"
-                          >
-                            <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                              Switch Workspace
-                            </div>
-                            {workspaces.map(ws => (
-                              <div
-                                key={ws.id}
-                                className={`w-full rounded-lg flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer group ${
-                                  ws.id === activeWorkspaceId ? 'bg-blue-50 text-[#2563EB]' : 'text-slate-700 hover:bg-slate-50'
-                                }`}
-                                onClick={() => {
-                                  setActiveWorkspaceId(ws.id);
-                                  setIsWorkspaceSwitcherOpen(false);
-                                }}
-                              >
-                                <span className="truncate">{ws.name}</span>
-                                {ws.id === activeWorkspaceId && <Check className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />}
-                              </div>
-                            ))}
-                            <div className="my-1 border-t border-slate-100" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsWorkspaceSwitcherOpen(false);
-                                setIsNewWorkspaceOpen(true);
-                              }}
-                              className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5 shrink-0" />
-                              <span>Create Workspace</span>
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* 2. Micro Chevron Divider (Tight Natural Spacing) */}
-                    <ChevronRight className="w-3 h-3 text-slate-400 stroke-[2.2] shrink-0 -mx-0.5" />
-
-                    {/* 3. Section Switcher Ghost Pill Segment (Pure text, no down arrow) */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsWorkspaceSwitcherOpen(false);
-                          setIsWorkspaceDropdownOpen(prev => !prev);
-                        }}
-                        className={`px-1.5 py-0.5 rounded-md text-[13px] sm:text-[13.5px] font-semibold transition-all cursor-pointer focus:outline-none select-none ${
-                          isWorkspaceDropdownOpen
-                            ? 'bg-[#2563EB] text-white shadow-3xs'
-                            : 'text-slate-700 hover:text-white hover:bg-[#2563EB] active:bg-blue-700'
-                        }`}
-                        title="Switch section"
-                      >
-                        <span className="truncate max-w-[90px] min-[400px]:max-w-[120px] sm:max-w-[160px] leading-tight">
-                          {activeSection || 'Select Section'}
-                        </span>
-                      </button>
-
-                      {/* Section Switcher Dropdown */}
-                      <AnimatePresence>
-                        {isWorkspaceDropdownOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                            transition={{ duration: 0.12, ease: 'easeOut' }}
-                            className="absolute left-0 top-full mt-2 w-[210px] sm:w-[230px] bg-white border border-slate-200 shadow-xl shadow-slate-900/10 rounded-xl p-1.5 z-50 text-xs select-none"
-                          >
-                            <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                              Switch Section
-                            </div>
-                            {currentWorkspaceSections.length === 0 ? (
-                              <div className="px-2.5 py-2 text-xs text-slate-400 italic font-medium">
-                                No sections created yet
-                              </div>
-                            ) : (
-                              currentWorkspaceSections.map(sec => (
-                                <div
-                                  key={sec.id || sec.name}
-                                  className={`w-full rounded-lg flex items-center justify-between px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer group ${
-                                    sec.name === activeSection ? 'bg-blue-50 text-[#2563EB]' : 'text-slate-700 hover:bg-slate-50'
-                                  }`}
-                                  onClick={() => {
-                                    setActiveSection(sec.name);
-                                    setIsWorkspaceDropdownOpen(false);
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate">{sec.name}</span>
-                                    {sec.name === activeSection && <Check className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (activeMenuSection === sec.name) {
-                                        setActiveMenuSection(null);
-                                        setSectionMenuPos(null);
-                                      } else {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setSectionMenuPos({ top: rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 180) });
-                                        setActiveMenuSection(sec.name);
-                                      }
-                                    }}
-                                    className={`p-1 rounded-md transition-colors cursor-pointer shrink-0 ml-1 ${
-                                      activeMenuSection === sec.name
-                                        ? 'bg-slate-200 text-slate-800'
-                                        : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/60'
-                                    }`}
-                                    title="Section options"
-                                  >
-                                    <MoreVertical className="w-3.5 h-3.5 stroke-[2]" />
-                                  </button>
-                                </div>
-                              ))
-                            )}
-                            <div className="my-1 border-t border-slate-100" />
-                            <button
-                              onClick={() => {
-                                setIsWorkspaceDropdownOpen(false);
-                                setIsNewSectionOpen(true);
-                              }}
-                              className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5 shrink-0" />
-                              <span>Create Section</span>
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CENTER: Desktop & Tablet Quick-Search Bar (Centered) */}
-                <div className="hidden sm:flex flex-1 items-center justify-center max-w-[380px] md:max-w-[420px] lg:max-w-[460px] mx-auto px-2 z-10">
-                  <button
-                    type="button"
-                    onClick={() => setIsSearchPageOpen(true)}
-                    className="h-[34px] w-full px-3 rounded-lg border border-slate-200/90 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/80 hover:bg-slate-100/90 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-between transition-all cursor-pointer shadow-3xs group"
-                    title="Search workspace (⌘K)"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 stroke-[2.2] shrink-0 transition-colors" />
-                      <span className="text-xs text-slate-400 dark:text-slate-500 font-medium group-hover:text-slate-600 dark:group-hover:text-slate-300 truncate">Search topics, tasks, notes...</span>
-                    </div>
-                    {/* Modern Pill Shortcut Badge */}
-                    <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 h-[19px] bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-[5px] text-slate-500 dark:text-slate-400 text-[10.5px] font-bold leading-none shadow-3xs select-none shrink-0 ml-2">
-                      <Command className="w-[9px] h-[9px] text-slate-500 dark:text-slate-400 stroke-[2.3]" />
-                      <span>K</span>
-                    </kbd>
-                  </button>
-                </div>
-
-                {/* RIGHT: Search Icon (Mobile Only), Bell, Plus Action */}
-                <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-auto sm:ml-0 z-10">
-                  {/* Mobile Search Icon Button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsSearchPageOpen(true)}
-                    className="hidden w-[26px] h-[26px] rounded-[6px] border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-2xs"
-                    title="Search (⌘K)"
-                  >
-                    <Search className="w-3.5 h-3.5 text-slate-800 dark:text-slate-200 stroke-[2.2]" />
-                  </button>
-
-                  {/* Bell Notification Button */}
-                  <div className="relative notification-dropdown-container">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== 'undefined' && 'Notification' in window) {
-                          setDeviceNotifStatus(Notification.permission);
-                        }
-                        setIsNotificationPanelOpen(!isNotificationPanelOpen);
-                      }}
-                      className="flex w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 items-center justify-center text-slate-800 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-2xs relative group active:scale-95"
-                      title="Notifications"
-                    >
-                      <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-800 dark:text-slate-300 group-hover:text-slate-950 dark:group-hover:text-white stroke-[2.2]" />
-                      {unreadNotifCount > 0 && (
-                        <span className={`absolute -top-1.5 -right-1.5 h-[18px] rounded-full bg-[#EF4444] text-white text-[10px] font-extrabold flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-xs leading-none text-center select-none ${
-                          unreadNotifCount > 9 ? 'min-w-[20px] px-1' : 'w-[18px] p-0'
-                        }`}>
-                          <span className="leading-none flex items-center justify-center text-center">
-                            {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                          </span>
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Professional & Premium Notification Panel Dropdown */}
-                    <AnimatePresence>
-                      {isNotificationPanelOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                          transition={{ duration: 0.15, ease: 'easeOut' }}
-                          className="fixed inset-x-0 top-[62px] bottom-0 w-full h-[calc(100dvh-62px)] sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[420px] sm:h-auto sm:max-h-[560px] bg-white border-t sm:border border-slate-200/90 shadow-2xl rounded-none sm:rounded-2xl p-0 z-[99999] overflow-hidden text-xs select-none flex flex-col backdrop-blur-xs"
-                        >
-                          {/* Header */}
-                          <div className="px-4 py-3.5 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsNotificationPanelOpen(false)}
-                                className="sm:hidden p-1 -ml-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
-                                title="Close notifications"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                              <div className="w-6 h-6 rounded-lg bg-blue-100/90 text-[#176BFF] flex items-center justify-center">
-                                <Bell className="w-3.5 h-3.5" />
-                              </div>
-                              <span className="font-extrabold text-slate-900 text-sm tracking-tight">Notifications</span>
-                              {unreadNotifCount > 0 && (
-                                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#176BFF] border border-blue-200/80 text-[10px] font-bold">
-                                  {unreadNotifCount} unread
-                                </span>
-                              )}
-                            </div>
-                            {unreadNotifCount > 0 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-                                }}
-                                className="text-[11px] font-bold text-[#176BFF] hover:underline cursor-pointer"
-                              >
-                                Mark all read
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Device & Lockscreen Push Alert Banner Card (Shown ONLY when notifications are not yet enabled) */}
-                          {deviceNotifStatus !== 'granted' && (
-                            <div className="p-3 bg-gradient-to-r from-blue-50/90 via-sky-50/70 to-indigo-50/80 border-b border-blue-100/80 shrink-0">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-start gap-2.5 min-w-0">
-                                  <div className="w-8 h-8 rounded-xl bg-[#176BFF] text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20 mt-0.5">
-                                    <Bell className="w-4 h-4" />
-                                  </div>
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="font-bold text-slate-900 text-[11.5px] truncate">
-                                      Device & Lockscreen Alerts
-                                    </span>
-                                    <span className="text-[10px] text-slate-500 leading-tight mt-0.5">
-                                      Receive background study milestone alarms & task due date reminders.
-                                    </span>
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={handleToggleDeviceNotifications}
-                                  className="px-2.5 py-1.5 rounded-lg bg-[#176BFF] hover:bg-blue-700 text-white font-bold text-[10.5px] transition-all cursor-pointer shadow-xs shrink-0 flex items-center gap-1 active:scale-95"
-                                >
-                                  <Bell className="w-3 h-3" /> Enable Push
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Filter Tabs */}
-                          <div className="flex items-center gap-1.5 px-3 py-2 bg-white border-b border-slate-100 shrink-0 overflow-x-auto no-scrollbar">
-                            {[
-                              { id: 'all', label: 'All', count: notifications.length },
-                              { id: 'focus', label: 'Study & Focus ⏱️', count: notifications.filter(n => n.type === 'focus').length },
-                              { id: 'reminders', label: 'Reminders 📌', count: notifications.filter(n => n.type === 'reminders').length },
-                            ].map(tab => (
-                              <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setNotifFilter(tab.id as any)}
-                                className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
-                                  notifFilter === tab.id
-                                    ? 'bg-slate-900 text-white'
-                                    : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/70'
-                                }`}
-                              >
-                                <span>{tab.label}</span>
-                                <span className={`text-[9px] px-1 py-0.2 rounded-md ${
-                                  notifFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                                }`}>
-                                  {tab.count}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* List */}
-                          <div className="flex-1 sm:max-h-[300px] overflow-y-auto divide-y divide-slate-100">
-                            {(() => {
-                              const filteredList = notifications.filter(n => {
-                                if (notifFilter === 'focus') return n.type === 'focus';
-                                if (notifFilter === 'reminders') return n.type === 'reminders';
-                                return true;
-                              });
-
-                              if (filteredList.length === 0) {
-                                return (
-                                  <div className="py-12 text-center text-slate-400">
-                                    <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
-                                    <p className="text-xs font-semibold text-slate-600">No notifications in this tab</p>
-                                    <p className="text-[10.5px] text-slate-400 mt-0.5">Study check-ins and due dates will appear here</p>
-                                  </div>
-                                );
-                              }
-
-                              return filteredList.map(n => {
-                                const isStudy = n.type === 'focus';
-                                const isReminder = n.type === 'reminders';
-
-                                return (
-                                  <div
-                                    key={n.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
-                                    }}
-                                    className={`p-3.5 sm:p-3 flex items-start gap-3 transition-colors cursor-pointer ${
-                                      !n.read ? 'bg-blue-50/30 hover:bg-blue-50/60' : 'hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <div className={`mt-0.5 p-2 rounded-xl shrink-0 ${
-                                      isStudy
-                                        ? 'bg-blue-100 text-[#176BFF]'
-                                        : isReminder
-                                          ? 'bg-amber-100 text-amber-700'
-                                          : 'bg-emerald-100 text-emerald-700'
-                                    }`}>
-                                      {isStudy ? (
-                                        <Timer className="w-4 h-4" />
-                                      ) : isReminder ? (
-                                        <CalendarDays className="w-4 h-4" />
-                                      ) : (
-                                        <Sparkles className="w-4 h-4" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className={`text-xs leading-snug ${!n.read ? 'font-bold text-slate-900' : 'font-medium text-slate-600'}`}>
-                                        {n.title}
-                                      </p>
-                                      {n.description && (
-                                        <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">
-                                          {n.description}
-                                        </p>
-                                      )}
-                                      <span className="text-[9.5px] font-medium text-slate-400 mt-1 block font-mono">{n.time}</span>
-                                    </div>
-                                    {!n.read && <span className="w-2 h-2 rounded-full bg-[#176BFF] mt-1 shrink-0" />}
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-
-                          {/* Footer */}
-                          <div className="p-3 sm:p-2 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between px-4 shrink-0">
-                            {deviceNotifStatus === 'granted' ? (
-                              <button
-                                type="button"
-                                onClick={handleToggleDeviceNotifications}
-                                className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#176BFF] border border-blue-200/80 text-[10.5px] font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-2xs"
-                                title="Play test audio chime and send test notification"
-                              >
-                                <Volume2 className="w-3.5 h-3.5 text-[#176BFF]" />
-                                <span>Test Push</span>
-                              </button>
-                            ) : (
-                              <div />
-                            )}
-                            {notifications.length > 0 && (
-                              <button
-                                onClick={() => {
-                                  setNotifications([]);
-                                  setIsNotificationPanelOpen(false);
-                                }}
-                                className="text-[11px] font-bold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer"
-                              >
-                                Clear all notifications
-                              </button>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  {/* User Profile / Auth Button */}
-                  <div className="relative user-profile-dropdown-container">
-                    {currentUser ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setProfileMenuTarget(prev => prev === 'header' ? null : 'header')}
-                          className="relative w-[26px] h-[26px] sm:w-[34px] sm:h-[34px] rounded-full border border-slate-200/90 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-900 flex items-center justify-center hover:ring-2 hover:ring-blue-500/25 active:scale-95 transition-all cursor-pointer shadow-xs group shrink-0"
-                          title={currentUser.displayName || currentUser.email || 'User profile'}
-                        >
-                          <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
-                            {currentUser.photoURL ? (
-                              <img
-                                src={currentUser.photoURL}
-                                alt={currentUser.displayName || 'Avatar'}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gradient-to-tr from-[#3B82F6] to-[#1D4ED8] text-white font-black text-[11px] sm:text-xs flex items-center justify-center uppercase">
-                                {currentUser.displayName?.[0] || currentUser.email?.[0] || 'U'}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Live Cloud Sync Indicator Dot */}
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 shadow-3xs pointer-events-none transition-colors ${
-                              isOnline ? 'bg-emerald-500' : 'bg-amber-500'
-                            }`}
-                            title={isOnline ? 'Cloud Synced' : 'Offline Mode (Local Cache)'}
-                          />
-                        </button>
-
-                        {/* User Profile Popover */}
-                        <UserProfilePopover
-                          isOpen={profileMenuTarget === 'header'}
-                          onClose={() => setProfileMenuTarget(null)}
-                          currentUser={currentUser}
-                          isOnline={isOnline}
-                          currentStreak={streakData.currentStreak}
-                          dailyGoalPercent={dailyGoalPercent}
-                          onOpenEditProfile={() => setIsEditProfileOpen(true)}
-                          onChangePassword={handleChangePassword}
-                          onSwitchAccount={handleSwitchAccount}
-                          onSignOut={handleSignOut}
-                          position="header"
-                        />
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsAuthModalOpen(true)}
-                        className="h-[26px] sm:h-[34px] px-2.5 sm:px-3.5 rounded-[6px] sm:rounded-lg bg-gradient-to-tr from-[#3B82F6] via-[#2563EB] to-[#1D4ED8] hover:opacity-95 active:scale-95 text-white text-[11.5px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/20 transition-all shrink-0"
-                        title="Sign in with Google or Email"
-                      >
-                        <LogIn className="w-3.5 h-3.5 shrink-0 stroke-[2.4]" />
-                        <span className="hidden sm:inline">Sign In</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-              </header>
+              {/* 1. TOP FULL-WIDTH FLUSH HEADER */}
+              <WorkspaceHeader
+                setTooltipData={setTooltipData}
+                isWorkspaceDropdownOpen={isWorkspaceDropdownOpen}
+                setIsWorkspaceDropdownOpen={setIsWorkspaceDropdownOpen}
+                setIsMobileWorkspaceDropdownOpen={setIsMobileWorkspaceDropdownOpen}
+                setSidebarCollapsed={setSidebarCollapsed}
+                sidebarCollapsed={sidebarCollapsed}
+                activeWorkspace={activeWorkspace}
+                workspaces={workspaces}
+                activeWorkspaceId={activeWorkspaceId}
+                setActiveWorkspaceId={setActiveWorkspaceId}
+                isWorkspaceSwitcherOpen={isWorkspaceSwitcherOpen}
+                setIsWorkspaceSwitcherOpen={setIsWorkspaceSwitcherOpen}
+                setIsNewWorkspaceOpen={setIsNewWorkspaceOpen}
+                activeSection={activeSection}
+                setActiveSection={setActiveSection}
+                currentWorkspaceSections={currentWorkspaceSections}
+                activeMenuSection={activeMenuSection}
+                setActiveMenuSection={setActiveMenuSection}
+                sectionMenuPos={sectionMenuPos}
+                setSectionMenuPos={setSectionMenuPos}
+                setIsNewSectionOpen={setIsNewSectionOpen}
+                setIsSearchPageOpen={setIsSearchPageOpen}
+                deviceNotifStatus={deviceNotifStatus}
+                setDeviceNotifStatus={setDeviceNotifStatus}
+                isNotificationPanelOpen={isNotificationPanelOpen}
+                setIsNotificationPanelOpen={setIsNotificationPanelOpen}
+                unreadNotifCount={unreadNotifCount}
+                notifications={notifications}
+                setNotifications={setNotifications}
+                notifFilter={notifFilter}
+                setNotifFilter={setNotifFilter}
+                handleToggleDeviceNotifications={handleToggleDeviceNotifications}
+                currentUser={currentUser}
+                profileMenuTarget={profileMenuTarget}
+                setProfileMenuTarget={setProfileMenuTarget}
+                isOnline={isOnline}
+                streakData={streakData}
+                dailyGoalPercent={dailyGoalPercent}
+                setIsEditProfileOpen={setIsEditProfileOpen}
+                handleChangePassword={handleChangePassword}
+                handleSwitchAccount={handleSwitchAccount}
+                handleSignOut={handleSignOut}
+                setIsAuthModalOpen={setIsAuthModalOpen}
+              />
 
               {/* 2. SCROLLABLE WORKSPACE CONTAINER (Content Centered at max-w-[1178px]) */}
               <div className="flex-1 w-full overflow-y-auto no-scrollbar pt-4 px-4 sm:pt-6 sm:px-6 pb-2.5 sm:pb-3 flex flex-col">
@@ -8197,1906 +6404,97 @@ export function App() {
               {/* Dashboard Workspace Body */}
               <div className="w-full flex flex-col gap-4 min-w-0">
                 {/* Top Summary Metrics Row (4 Cards) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {/* Metric 1: Workspace Progress (Preserve original blue brand color) */}
-                    <div className="preserve-color p-3.5 bg-white dark:bg-slate-900 border-none rounded-[8px] flex items-center gap-3 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 transition-all duration-200 group">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#1D4ED8] via-[#2563EB] to-[#60A5FA] text-white rounded-[6px] flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20 group-hover:scale-105 transition-transform">
-                        <BookOpen className="w-5 h-5 stroke-[2.2] text-white" />
-                      </div>
-                      <div className="flex-1 flex flex-col gap-1 min-w-0">
-                        <span className="text-xs font-bold text-[#0F172A] dark:text-slate-100 truncate">Workspace Progress</span>
-                        <div className="flex items-center justify-between text-xs font-bold gap-2">
-                          <div className="w-full bg-[#F1F5F9] dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-gradient-to-r from-[#2563EB] via-[#3B82F6] to-[#60A5FA] h-full rounded-full transition-[width] duration-300 ease-in-out"
-                              style={{ width: `${workspaceProgressPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-[#2563EB] dark:text-blue-400 font-bold shrink-0">
-                            {workspaceProgressPercent}%
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-medium text-[#94A3B8] dark:text-slate-400 truncate">
-                          <AnimatedNumber value={completedWorkspaceTasks} /> / <AnimatedNumber value={totalWorkspaceTasks} /> Tasks Completed
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Metric 2: Section Progress */}
-                    <div className="p-3.5 bg-white dark:bg-slate-900 border-none rounded-[8px] flex items-center gap-3 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 transition-all duration-200 group">
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#7C3AED] via-[#9333EA] to-[#C084FC] text-white rounded-[6px] flex items-center justify-center shrink-0 shadow-sm shadow-purple-500/20 group-hover:scale-105 transition-transform">
-                        <Folder className="w-5 h-5 stroke-[2.2] text-white" />
-                      </div>
-                      <div className="flex-1 flex flex-col gap-1 min-w-0">
-                        <span className="text-xs font-bold text-[#0F172A] dark:text-slate-100 truncate">Section Progress</span>
-                        <div className="flex items-center justify-between text-xs font-bold gap-2">
-                          <div className="w-full bg-[#F1F5F9] dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-gradient-to-r from-[#7C36F5] via-[#9333EA] to-[#C084FC] h-full rounded-full transition-[width] duration-300 ease-in-out"
-                              style={{ width: `${sectionProgressPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-[#9333EA] dark:text-purple-400 font-bold shrink-0">
-                            {sectionProgressPercent}%
-                          </span>
-                        </div>
-                        <span className="text-[11px] font-medium text-[#94A3B8] dark:text-slate-400 truncate">
-                          <AnimatedNumber value={completedSectionTasks} /> / <AnimatedNumber value={totalSectionTasks} /> Tasks ({activeSection})
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Metric 3: Today's Goal (Interactive Popover Trigger) */}
-                    <div className="relative">
-                      <div
-                        data-goal-card="true"
-                        onClick={() => setIsGoalPopoverOpen(prev => !prev)}
-                        className="p-3.5 bg-white dark:bg-slate-900 border-none rounded-[8px] flex items-center gap-3 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer select-none group"
-                        title="Click to view Today's Goal breakdown & settings"
-                      >
-                        <div className="w-10 h-10 bg-gradient-to-br from-[#059669] via-[#10B981] to-[#34D399] text-white rounded-[6px] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-                          <Target className="w-5 h-5 stroke-[2.4] text-white" />
-                        </div>
-                        <div className="flex-1 flex flex-col gap-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-xs font-bold text-[#0F172A] dark:text-slate-100 truncate">Today's Goal</span>
-                            <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-none shrink-0">
-                              {dailyGoalMode === 'time' ? '⏱️ Time' : '🎯 Tasks'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-xs font-bold gap-2">
-                            <div className="w-full bg-[#F1F5F9] dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                              <div
-                                className="bg-gradient-to-r from-[#059669] via-[#10B981] to-[#34D399] h-full rounded-full transition-[width] duration-300 ease-in-out"
-                                style={{ width: `${dailyGoalPercent}%` }}
-                              />
-                            </div>
-                            <span className="text-[#10B981] dark:text-emerald-400 font-bold shrink-0">
-                              {dailyGoalPercent}%
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[#94A3B8] dark:text-slate-400 truncate">
-                            <span className="truncate">
-                              {dailyGoalMode === 'time' ? (
-                                `${formatGoalDuration(globalTotalStudyMinutesToday)} / ${formatGoalDuration(dailyTimeTargetMinutes)}`
-                              ) : (
-                                <><AnimatedNumber value={globalCompletedTasksToday} /> / {dailyTarget} Tasks</>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">
-                              {dailyGoalPercent >= 100 ? 'Achieved 🏆' : `${Math.max(0, targetGoalValue - currentGoalValue)} left`}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <TodaysGoalPopover
-                        isOpen={isGoalPopoverOpen}
-                        onClose={() => setIsGoalPopoverOpen(false)}
-                        currentMode={dailyGoalMode}
-                        onToggleMode={handleUpdateDailyGoalMode}
-                        completedTasksToday={globalCompletedTasksToday}
-                        dailyTaskTarget={dailyTarget}
-                        onUpdateTaskTarget={handleUpdateTaskTarget}
-                        totalStudyMinutesToday={globalTotalStudyMinutesToday}
-                        dailyTimeTargetMinutes={dailyTimeTargetMinutes}
-                        onUpdateDailyTimeTarget={handleUpdateDailyTimeTarget}
-                        workspacesStats={workspacesStats}
-                        activeWorkspaceId={activeWorkspaceId}
-                        onSelectWorkspace={(wsId) => setActiveWorkspaceId(wsId)}
-                        onNavigateToTask={handleNavigateToGoalTask}
-                        streakDays={streakData.currentStreak}
-                      />
-                    </div>
-
-                    {/* Metric 4: Streak (Interactive Popover Trigger) */}
-                    <div className="relative">
-                      <div
-                        data-streak-card="true"
-                        onClick={() => setIsStreakPopoverOpen(prev => !prev)}
-                        title="Click to view Streak Dashboard & Freezes"
-                        className="p-3.5 bg-white dark:bg-slate-900 border-none rounded-[8px] flex items-center gap-3 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.06)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer select-none group"
-                      >
-                        <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 text-white rounded-[6px] flex items-center justify-center shrink-0 shadow-sm shadow-orange-500/20 group-hover:scale-105 transition-transform">
-                          <Flame className="w-5 h-5 fill-white" />
-                        </div>
-                        <div className="flex-1 flex flex-col gap-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-xs font-bold text-[#0F172A] truncate">Streak</span>
-                            <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-orange-50 dark:bg-orange-950/40 text-[#EA580C] dark:text-orange-400 border border-orange-200/80 dark:border-orange-800/40 shrink-0">
-                              {streakData.currentStreak > 0 ? '🔥 Active' : '⚡ Inactive'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between text-xs font-bold gap-2">
-                            <div className="w-full bg-[#F1F5F9] dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                              <div
-                                className="bg-gradient-to-r from-[#EA580C] via-[#F97316] to-[#FDBA74] h-full rounded-full transition-[width] duration-300 ease-in-out"
-                                style={{ width: `${streakData.currentStreak > 0 ? Math.min(100, Math.max(15, ((streakData.currentStreak % 7 || 7) / 7) * 100)) : 0}%` }}
-                              />
-                            </div>
-                            <span className="text-[#EA580C] dark:text-orange-400 font-bold shrink-0 text-xs">
-                              {streakData.currentStreak} {streakData.currentStreak === 1 ? 'Day' : 'Days'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[#94A3B8] truncate">
-                            <span className="truncate">
-                              {streakData.currentStreak > 0 ? 'Keep it up! 🔥' : 'Start your streak! ⚡'}
-                            </span>
-                            {streakData.bestStreak > 0 && (
-                              <span className="text-[10px] text-slate-500 font-semibold shrink-0">
-                                Best: {streakData.bestStreak}d
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <StreakPopover
-                        isOpen={isStreakPopoverOpen}
-                        onClose={() => setIsStreakPopoverOpen(false)}
-                        streakData={streakData}
-                        onStreakUpdate={(updated) => setStreakData(updated)}
-                        isTodayGoalAchieved={isDailyGoalAchieved}
-                      />
-                    </div>
-                  </div>
+                  <WorkspaceMetricsBanner
+                    workspaceProgressPercent={workspaceProgressPercent}
+                    completedWorkspaceTasks={completedWorkspaceTasks}
+                    totalWorkspaceTasks={totalWorkspaceTasks}
+                    sectionProgressPercent={sectionProgressPercent}
+                    completedSectionTasks={completedSectionTasks}
+                    totalSectionTasks={totalSectionTasks}
+                    activeSection={activeSection}
+                    isGoalPopoverOpen={isGoalPopoverOpen}
+                    setIsGoalPopoverOpen={setIsGoalPopoverOpen}
+                    dailyGoalMode={dailyGoalMode}
+                    handleUpdateDailyGoalMode={handleUpdateDailyGoalMode}
+                    dailyGoalPercent={dailyGoalPercent}
+                    globalTotalStudyMinutesToday={globalTotalStudyMinutesToday}
+                    dailyTimeTargetMinutes={dailyTimeTargetMinutes}
+                    globalCompletedTasksToday={globalCompletedTasksToday}
+                    dailyTarget={dailyTarget}
+                    targetGoalValue={targetGoalValue}
+                    currentGoalValue={currentGoalValue}
+                    handleUpdateTaskTarget={handleUpdateTaskTarget}
+                    handleUpdateDailyTimeTarget={handleUpdateDailyTimeTarget}
+                    workspacesStats={workspacesStats}
+                    activeWorkspaceId={activeWorkspaceId}
+                    setActiveWorkspaceId={setActiveWorkspaceId}
+                    handleNavigateToGoalTask={handleNavigateToGoalTask}
+                    streakData={streakData}
+                    isStreakPopoverOpen={isStreakPopoverOpen}
+                    setIsStreakPopoverOpen={setIsStreakPopoverOpen}
+                    setStreakData={setStreakData}
+                    isDailyGoalAchieved={isDailyGoalAchieved}
+                  />
 
                   {/* Smart Topic Generator Banner */}
-                  <div className="p-4 bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-[8px] flex flex-col gap-2.5 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition-all duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-[#3B82F6]" />
-                        <h3 className="text-xs font-bold text-[#0F172A]">
-                          Smart Topic Generator
-                        </h3>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsGeneratorSyntaxHelpOpen(!isGeneratorSyntaxHelpOpen)}
-                        className="text-[11px] font-bold text-[#2563EB] hover:underline cursor-pointer flex items-center gap-1"
-                      >
-                        <span>Syntax Guide</span>
-                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isGeneratorSyntaxHelpOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                    </div>
-
-                    {/* Format Guide Help Box with 100% Native CSS Grid Animation (Identical to Add Note / Add Link) */}
-                    <div
-                      className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        isGeneratorSyntaxHelpOpen ? 'grid-rows-[1fr] opacity-100 mb-1' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
-                      }`}
-                    >
-                      <div className="overflow-hidden">
-                        <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 text-xs text-slate-700 space-y-2 select-none">
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5 text-[11.5px]">
-                            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Supported Formatting Syntax:</span>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-                            <div className="p-2 bg-white rounded border border-slate-200/80">
-                              <span className="font-bold text-blue-600"># Topic Name</span>
-                              <p className="text-[10.5px] font-sans text-slate-500 mt-0.5">Creates Topic title & Topic Notes/Links</p>
-                            </div>
-                            <div className="p-2 bg-white rounded border border-slate-200/80">
-                              <span className="font-bold text-indigo-600">## Task Name</span>
-                              <p className="text-[10.5px] font-sans text-slate-500 mt-0.5">Creates Task under Topic</p>
-                            </div>
-                            <div className="p-2 bg-white rounded border border-slate-200/80">
-                              <span className="font-bold text-emerald-600">$ Task Description</span>
-                              <p className="text-[10.5px] font-sans text-slate-500 mt-0.5">Adds description to current Task</p>
-                            </div>
-                            <div className="p-2 bg-white rounded border border-slate-200/80">
-                              <span className="font-bold text-amber-600">&gt; Note Text</span>
-                              <p className="text-[10.5px] font-sans text-slate-500 mt-0.5">Adds Note to Topic or Task</p>
-                            </div>
-                            <div className="p-2 bg-white rounded border border-slate-200/80 col-span-1 sm:col-span-2">
-                              <span className="font-bold text-purple-600">@ Title | URL</span>
-                              <p className="text-[10.5px] font-sans text-slate-500 mt-0.5">Adds Link to Topic or Task (e.g., <code className="text-purple-700 bg-purple-50 px-1 rounded">@ Docs | drive.google.com/file</code>)</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="relative w-full">
-                      <form onSubmit={handleQuickAddTopic} className="flex flex-row gap-2 sm:gap-3 items-center w-full">
-                        <textarea
-                          ref={el => {
-                            (generatorInputRef as any).current = el;
-                            if (el) {
-                              if (!el.value.includes('\n')) {
-                                el.style.height = '34px';
-                              } else {
-                                el.style.height = 'auto';
-                                el.style.height = `${Math.max(34, Math.min(el.scrollHeight, 130))}px`;
-                              }
-                            }
-                          }}
-                          value={generatorInput}
-                          onChange={e => {
-                            setGeneratorInput(e.target.value);
-                            const el = e.target;
-                            if (!el.value.includes('\n')) {
-                              el.style.height = '34px';
-                            } else {
-                              el.style.height = 'auto';
-                              el.style.height = `${Math.max(34, Math.min(el.scrollHeight, 130))}px`;
-                            }
-                          }}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleQuickAddTopic(e);
-                            }
-                          }}
-                          placeholder="Type topic name (e.g. শতকরা, সংবিধান, Physics[3])..."
-                          rows={1}
-                          className="flex-1 min-w-0 h-[34px] min-h-[34px] max-h-[120px] box-border py-[6px] px-3 sm:px-3.5 bg-white border border-[#E2E8F0] rounded-[6px] text-xs text-[#0F172A] placeholder-[#94A3B8] placeholder:whitespace-nowrap placeholder:truncate shadow-2xs focus:outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/15 transition-[height] duration-150 resize-none leading-[20px] smart-tg-input overflow-y-auto m-0"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isGenerating}
-                          className="h-[34px] min-h-[34px] max-h-[34px] box-border px-3.5 sm:px-5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1742BF] text-white rounded-[6px] text-xs font-bold flex items-center justify-center gap-1.5 sm:gap-2 shadow-sm shadow-blue-500/25 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 shrink-0 cursor-pointer m-0"
-                        >
-                          {isGenerating ? (
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                            </motion.div>
-                          ) : (
-                            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          )}
-                          <span className="whitespace-nowrap">{isGenerating ? 'Generating...' : 'Generate'}</span>
-                        </button>
-                      </form>
-
-                      {/* Smart Topic Auto-Suggestions Popover Menu */}
-                      <AnimatePresence>
-                        {(() => {
-                          const query = generatorInput.trim().toLowerCase();
-                          if (!query || query.length < 1 || query.includes('\n') || query.startsWith('#') || query.startsWith('@') || query.startsWith('$') || query.startsWith('>')) {
-                            return null;
-                          }
-
-                          // Comprehensive Syllabus Suggestion Dataset across all 25 Subjects
-                          const syllabusPool = [
-                            // 1. বাংলা ব্যাকরণ
-                            'বাংলা ব্যাকরণ (Bangla Grammar)', 'ধ্বনি ও বর্ণ প্রকরণ', 'সন্ধি বিচ্ছেদ ও নিয়ম', 'সমাস ও ব্যাসবাক্য', 'কারক ও বিভক্তি', 'প্রত্যয় ও উপসর্গ', 'বাগধারা ও প্রবাদ-প্রবচন', 'সমার্থক ও বিপরীতার্থক শব্দ', 'এককথায় প্রকাশ', 'শুদ্ধ বানান ও বাক্য শুদ্ধিকরণ', 'যতি ও বিরামচিহ্ন', 'বাচ্য ও উক্তি পরিবর্তন',
-                            // 2. বাংলা সাহিত্য
-                            'বাংলা সাহিত্য (Bangla Literature)', 'চর্যাপদ ও প্রাচীন যুগ', 'শ্রীকৃষ্ণকীর্তন ও মঙ্গলকাব্য', 'বৈষ্ণব পদাবলী ও রোমান্টিক প্রণয়োপাখ্যান', 'আধুনিক যুগ ও ঈশ্বরচন্দ্র বিদ্যাসাগর', 'মাইকেল মধুসূদন দত্ত', 'বঙ্কিমচন্দ্র চট্টোপাধ্যায়', 'রবীন্দ্রনাথ ঠাকুর', 'কাজী নজরুল ইসলাম', 'জীবনানন্দ দাশ', 'জসীম উদ্‌দীন', 'হুমায়ূন আহমেদ',
-                            // 3. English Grammar
-                            'English Grammar', 'Parts of Speech', 'Right Form of Verbs', 'Tense & Sequence of Tenses', 'Voice Change (Active & Passive)', 'Narration & Direct-Indirect Speech', 'Appropriate Preposition', 'Synonyms & Antonyms', 'Idioms & Phrases', 'One Word Substitution', 'Spelling Correction & Vocabulary', 'Conditional Sentences', 'Clauses & Phrases',
-                            // 4. English Literature
-                            'English Literature', 'Literary Terms & Figures of Speech', 'Elizabethan & Jacobean Age', 'William Shakespeare & Plays', 'Romantic Age & Poets', 'Victorian Age & Novels', 'Modern & Postmodern Literature', 'T.S. Eliot & W.B. Yeats', 'George Bernard Shaw',
-                            // 5. গণিত / Mathematics
-                            'গণিত (Mathematics)', 'শতকরা (Percentage)', 'লাভ-ক্ষতি (Profit & Loss)', 'অনুপাত ও সমানুপাত (Ratio & Proportion)', 'ঐকিক নিয়ম (Unitary Method)', 'ভগ্নাংশ ও দশমিক', 'ট্রেন সংক্রান্ত সমস্যা (Train)', 'নৌকা ও স্রোত (Boat & Stream)', 'নল ও চৌবাচ্চা (Pipe & Cistern)', 'কাজ ও সময় (Work & Time)', 'ঘড়ি ও ক্যালেন্ডার (Clock & Calendar)', 'বয়স সংক্রান্ত সমস্যা (Age)', 'জ্যামিতি ও ক্ষেত্রফল (Geometry)', 'ত্রিকোণমিতি ও উচ্চতা (Trigonometry)', 'বীজগণিতীয় সূত্র ও সমীকরণ (Algebra)', 'লগারিদম ও সূচক (Logarithm & Exponents)', 'বিন্যাস ও সমাবেশ (Permutation & Combination)', 'সম্ভাবনা ও পরিসংখ্যান (Probability & Statistics)',
-                            // 6. মানসিক দক্ষতা / Mental Ability
-                            'মানসিক দক্ষতা (Mental Ability)', 'ভাষাগত যৌক্তিক বিচার', 'রক্ত সম্পর্ক (Blood Relation)', 'দিক নির্ণয় ও কম্পাস (Direction Sense)', 'চিত্র ও প্রতিবিম্ব (Mirror & Water Images)', 'ঘনক ও পাশা (Cube & Dice)', 'যুক্তি ও ধাঁধা (Reasoning & Puzzles)', 'কোডিং ও ডিকোডিং (Coding-Decoding)', 'সংখ্যা ও বর্ণ সিরিজ (Number & Letter Series)',
-                            // 7. বাংলাদেশ বিষয়াবলি
-                            'বাংলাদেশ বিষয়াবলি (Bangladesh Affairs)', 'প্রাচীন বাংলার ইতিহাস ও জনপদ', 'পলাশীর যুদ্ধ ও ব্রিটিশ শাসন', 'ভাষা আন্দোলন ও যুক্তফ্রন্ট', '৬ দফা আন্দোলন ও গণঅভ্যুত্থান', 'বাংলাদেশের নদ-নদী ও ভূ-প্রকৃতি', 'আদমশুমারি ও উপজাতি',
-                            // 8. আন্তর্জাতিক বিষয়াবলি
-                            'আন্তর্জাতিক বিষয়াবলি (International Affairs)', 'জাতিসংঘ ও বিশ্ব সংস্থা (UN & Treaties)', 'বিশ্ব রাজনীতি ও ভূ-রাজনীতি (Geopolitics)', 'সার্ক, আসিয়ান ও ন্যাটো (SAARC, ASEAN, NATO)', 'প্রথম ও দ্বিতীয় বিশ্বযুদ্ধ', 'আন্তর্জাতিক চুক্তি ও সম্মেলন', 'বিশ্বের প্রণালী, খাল ও দ্বীপ',
-                            // 9. সাধারণ বিজ্ঞান
-                            'সাধারণ বিজ্ঞান (General Science)', 'পদার্থের অবস্থা ও গতিবিদ্যা (Physics)', 'আলো, শব্দ ও তরঙ্গ (Light & Sound)', 'রসায়ন ও রাসায়নিক বিক্রিয়া (Chemistry)', 'পরমাণু ও পর্যায় সারণি', 'জীববিজ্ঞান ও কোষ গঠন (Biology)', 'জিনতত্ত্ব ও ডিএনএ (Genetics & DNA)', 'মানবদেহ ও রোগব্যাধি (Health & Anatomy)', 'খাদ্য ও ভিটামিন (Nutrition)',
-                            // 10. ICT / Computer
-                            'তথ্য ও যোগাযোগ প্রযুক্তি (ICT & Computer)', 'কম্পিউটার হার্ডওয়্যার ও সিপিইউ (Hardware & CPU)', 'অপারেটিং সিস্টেম ও সফটওয়্যার', 'সাইবার নিরাপত্তা ও ম্যালওয়্যার (Cyber Security)', 'কম্পিউটার নেটওয়ার্ক ও টপোলজি (Networking)', 'ইন্টারনেট ও ডাটাবেজ (Database & SQL)', 'কৃত্রিম বুদ্ধিমত্তা ও ক্লাউড কম্পিউটিং (AI & Cloud)',
-                            // 11. ভূগোল
-                            'ভূগোল ও ভূ-প্রকৃতি (Geography)', 'বাংলাদেশের নদ-নদী ও জলপ্রপাত', 'বায়ুমণ্ডল ও জলবায়ু মণ্ডল', 'ভূমিকম্প ও ভূ-অভ্যন্তর',
-                            // 12. পরিবেশ
-                            'পরিবেশ ও বাস্তুসংস্থান (Environment & Ecology)', 'জীববৈচিত্র্য ও সুন্দরবন', 'পরিবেশ দূষণ ও প্রতিকার', 'জলবায়ু পরিবর্তন ও কপ সম্মেলন (COP)',
-                            // 13. দুর্যোগ ব্যবস্থাপনা
-                            'দুর্যোগ ব্যবস্থাপনা (Disaster Management)', 'ঘূর্ণিঝড় ও বন্যা ব্যবস্থাপনা', 'ভূমিকম্প ও ভূমিধস পূর্বপ্রস্তুতি', 'দুর্যোগ ঝুঁকি হ্রাস ও পুনর্বাসন',
-                            // 14. নৈতিকতা
-                            'নৈতিকতা ও সততা (Ethics & Integrity)', 'পেশাগত ও চিকিৎসা নৈতিকতা', 'দুর্নীতি প্রতিরোধ ও প্রতিকার',
-                            // 15. মূল্যবোধ
-                            'মূল্যবোধ ও শিষ্টাচার (Values & Morality)', 'গণতান্ত্রিক ও সামাজিক মূল্যবোধ', 'সহমর্মিতা ও দেশপ্রেম',
-                            // 16. সুশাসন
-                            'সুশাসন ও নাগরিক চার্টার (Good Governance)', 'আইনের শাসন ও মানবাধিকার', 'দুদক ও স্বচ্ছতা-জবাবদিহিতা', 'ই-গভর্ন্যান্স ও ডিজিটাল সেবা',
-                            // 17. Current Affairs / সাম্প্রতিক বিষয়
-                            'সাম্প্রতিক বিষয়াবলী (Current Affairs)', 'সাম্প্রতিক অর্থনৈতিক সমীক্ষা ও বাজেট', 'সাম্প্রতিক আন্তর্জাতিক চুক্তি ও শীর্ষ সম্মেলন', 'সাম্প্রতিক বিজ্ঞান উদ্ভাবন ও পদক',
-                            // 18. সাধারণ জ্ঞান
-                            'সাধারণ জ্ঞান (General Knowledge)', 'বিশ্বের প্রাচীনতম ও বৃহত্তম বিস্ময়', 'বিখ্যাত আবিষ্কার ও আবিষ্কারক', 'বিশ্বের রাজধানী, মুদ্রা ও সংসদ',
-                            // 19. ইতিহাস
-                            'বিশ্ব ইতিহাস ও প্রাচীন সভ্যতা (World History)', 'শিল্প বিপ্লব ও রেনেসাঁ', 'ফরাসি বিপ্লব ও রুশ বিপ্লব', 'উপনিবেশবাদ ও স্বাধীনতা সংগ্রাম',
-                            // 20. সংবিধান ও সরকার
-                            'বাংলাদেশের সংবিধান (Constitution of Bangladesh)', 'সংবিধানের মৌলিক অধিকার ও অনুচ্ছেদ', 'জাতীয় সংসদ ও সরকার ব্যবস্থা', 'বিচার বিভাগ ও সুপ্রিম কোর্ট', 'নির্বাচন কমিশন ও সাংবিধানিক পদ',
-                            // 21. অর্থনীতি
-                            'অর্থনীতি ও জাতীয় আয় (Economy & GDP)', 'মুদ্রাস্ফীতি ও রাজস্ব নীতি', 'আমদানি, রপ্তানি ও বৈদেশিক বাণিজ্য', 'পঞ্চবার্ষিক পরিকল্পনা ও বাজেট',
-                            // 22. ব্যাংকিং
-                            'ব্যাংকিং ব্যবস্থা ও কেন্দ্রীয় ব্যাংক (Banking System)', 'বাংলাদেশ ব্যাংক ও মুদ্রানীতি', 'বাণিজ্যিক ব্যাংক ও ইসলামী ব্যাংকিং', 'অনলাইন ব্যাংকিং ও এমএফএস (MFS)',
-                            // 23. কৃষি
-                            'কৃষি প্রযুক্তি ও প্রধান খাদ্যশস্য (Agriculture)', 'অর্থকরী ফসল ও উন্নত বীজ (উফশী)', 'মৎস্য ও প্রাণিসম্পদ উন্নয়ন',
-                            // 24. মুক্তিযুদ্ধ
-                            'মুক্তিযুদ্ধ ও স্বাধীনতা (Liberation War 1971)', '৭ই মার্চের ভাষণ ও ২৫শে মার্চ অপারেশন সার্চলাইট', 'মুজিবনগর সরকার ও ১১টি সেক্টর', 'বীরশ্রেষ্ঠ ও জাতীয় বীরগণ', '১৬ই ডিসেম্বর বিজয় দিবস ও বুদ্ধিজীবী দিবস',
-                            // 25. খেলাধুলা
-                            'খেলাধুলা ও আন্তর্জাতিক ক্রীড়া (Sports & Athletics)', 'ক্রিকেট ও আইসিসি বিশ্বকাপ', 'ফিফা বিশ্বকাপ ও ফুটবল টুর্নামেন্ট', 'অলিম্পিক গেমস ও বিশ্বরেকর্ড'
-                          ];
-
-                          const matched = syllabusPool.filter(item => item.toLowerCase().includes(query)).slice(0, 5);
-
-                          if (matched.length === 0) return null;
-
-                          return (
-                            <motion.div
-                              initial={{ opacity: 0, y: -4, scale: 0.98 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                              transition={{ duration: 0.15, ease: 'easeOut' }}
-                              className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-xl shadow-xl shadow-slate-900/10 p-1.5 z-50 flex flex-col gap-1 select-none"
-                            >
-                              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between border-b border-slate-100 mb-0.5">
-                                <span className="flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3 text-blue-500" />
-                                  Smart Suggestions ({matched.length})
-                                </span>
-                                <span>Click to fill & preview</span>
-                              </div>
-                              {matched.map(item => {
-                                const cleanName = item.split('(')[0].trim();
-                                const theme = getTopicTheme(cleanName);
-                                const IconComp = theme.icon || BookOpen;
-
-                                return (
-                                  <button
-                                    key={item}
-                                    type="button"
-                                    onClick={() => {
-                                      setGeneratorInput(cleanName);
-                                    }}
-                                    className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between hover:bg-slate-100/90 transition-colors group cursor-pointer"
-                                  >
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <div className={`w-6.5 h-6.5 rounded-lg ${theme.cardIconBg} flex items-center justify-center text-white shrink-0 shadow-2xs group-hover:scale-105 transition-transform`}>
-                                        <IconComp className="w-3.5 h-3.5 stroke-[2.2]" />
-                                      </div>
-                                      <span className="text-[11px] font-serif font-semibold text-slate-800 truncate group-hover:text-blue-600">
-                                        {item}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                                      <div className={`w-2 h-2 rounded-full ${theme.bg}`} />
-                                      <span className="text-[10px] font-bold text-slate-400 group-hover:text-slate-600">
-                                        Use
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </motion.div>
-                          );
-                        })()}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-
-                  {/* --- UNIFIED MASTER TOPICS CANVAS CONTAINER / EMPTY STATE --- */}
-                  {filteredTopics.length === 0 ? (
-                    <div className="w-full border-2 border-dashed border-[#E2E8F0] dark:border-slate-800 rounded-2xl bg-white/60 dark:bg-slate-900/60 py-6 sm:py-8 md:py-9 px-6 flex flex-col items-center justify-center text-center relative select-none">
-                      {/* Illustration Graphic */}
-                      <div className="relative w-[112px] h-[112px] flex items-center justify-center mb-4 shrink-0">
-                        {/* Background Aura */}
-                        <div 
-                          className="absolute inset-0 rounded-full border shadow-inner transition-colors duration-300" 
-                          style={{
-                            backgroundColor: 'var(--folder-aura-bg, rgba(238, 244, 255, 0.8))',
-                            borderColor: 'var(--folder-aura-border, rgba(219, 234, 254, 0.5))'
-                          }}
-                        />
-                        
-                        {/* Floating Sparkles & Accent Shapes */}
-                        <div className="absolute top-0 right-2 w-2.5 h-2.5 bg-pink-300/80 rotate-45 rounded-[2px] animate-pulse" />
-                        <div className="absolute top-4 left-2 w-2 h-2 bg-pink-300/70 rotate-45 rounded-[2px]" />
-                        <div className="absolute bottom-4 right-3 w-2.5 h-2.5 bg-orange-300/80 rotate-45 rounded-[2px]" />
-                        <div className="absolute bottom-5 left-2 w-2 h-2 bg-purple-300/70 rotate-45 rounded-[2px]" />
-
-                        {/* 3D Soft Folder Graphic with document pages */}
-                        <div className="relative z-10 flex flex-col items-center transform hover:scale-105 transition-transform duration-300">
-                          <div 
-                            className="relative w-[72px] h-[54px] rounded-xl flex items-center justify-center transition-all duration-300"
-                            style={{
-                              backgroundImage: 'var(--folder-back-grad, linear-gradient(to top right, #3B82F6, #60A5FA, #93C5FD))',
-                              boxShadow: '0 10px 15px -3px var(--folder-shadow, rgba(37, 99, 235, 0.25))'
-                            }}
-                          >
-                            {/* Top Folder Tab */}
-                            <div 
-                              className="absolute -top-2 left-2 w-7 h-2.5 rounded-t-md transition-colors duration-300" 
-                              style={{
-                                backgroundColor: 'var(--folder-tab-color, #60A5FA)'
-                              }}
-                            />
-                            
-                            {/* Paper sheet popping out */}
-                            <div className="absolute -top-3 w-10 h-9 bg-white dark:bg-slate-800 rounded-t-lg shadow-xs border border-slate-100 dark:border-slate-700 flex flex-col p-1 gap-0.5 transform -rotate-3">
-                              <div className="w-7 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              <div className="w-5 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              <div 
-                                className="w-6 h-1 rounded-full transition-colors duration-300" 
-                                style={{
-                                  backgroundColor: 'var(--folder-line-color, #93C5FD)'
-                                }}
-                              />
-                            </div>
-
-                            {/* Front Flap */}
-                            <div 
-                              className="absolute inset-0 rounded-xl flex items-center justify-center opacity-95 border-t border-white/30 transition-all duration-300"
-                              style={{
-                                backgroundImage: 'var(--folder-front-grad, linear-gradient(to top right, #2563EB, #60A5FA))'
-                              }}
-                            >
-                              <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-2xs">
-                                <div className="w-2 h-2 rounded-full bg-white/90" />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Text Info */}
-                      <h3 className="text-lg sm:text-xl font-bold text-[#0F172A] dark:text-slate-100 tracking-tight">
-                        No topics found yet
-                      </h3>
-                      
-                      <p className="text-xs text-[#64748B] dark:text-slate-300 font-medium mt-1.5 max-w-xl text-center leading-relaxed">
-                        You haven't created any topics in this section. Create your first topic to get started and keep your learning organized.
-                      </p>
-
-                      {/* Primary Action Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewTopicTitle('');
-                          setIsNewTopicOpen(true);
-                        }}
-                        className="h-[36px] px-6 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1742BF] text-white text-xs font-bold rounded-[6px] shadow-sm shadow-blue-500/25 active:scale-[0.98] transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 mt-5 shrink-0"
-                      >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
-                        <span>Add New Topic</span>
-                      </button>
-
-                      {/* Secondary Link Button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsShortcutsOpen(true)}
-                        className="text-xs font-bold text-[#2563EB] dark:text-blue-400 hover:text-[#1D4ED8] dark:hover:text-blue-300 transition-colors cursor-pointer flex items-center gap-1.5 mt-2.5 py-1 px-2 rounded-md hover:bg-blue-50/50 dark:hover:bg-blue-950/50"
-                      >
-                        <Target className="w-3.5 h-3.5 text-[#2563EB] dark:text-blue-400" />
-                        <span>Learn how topics work</span>
-                        <span className="text-sm">→</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="w-full bg-white border border-[#E2E8F0] rounded-[10px] shadow-[0_2px_12px_rgba(15,23,42,0.03)] overflow-visible">
-                      {/* Integrated Docked Toolbar Header (Mac Glass & Strict 32px Symmetrical Height) */}
-                      <div className="flex items-center justify-between gap-2 px-2.5 py-2 sm:px-3.5 sm:py-2 bg-slate-50/80 backdrop-blur-xs border-b border-slate-200/90 rounded-t-[9px] relative z-30 select-none">
-                      
-                      {/* DESKTOP: Status Pill Filters (Connected Segmented Control) */}
-                      <div className="hidden min-[660px]:inline-flex items-center p-0.5 bg-slate-200/50 dark:bg-slate-800/80 border border-slate-200/90 dark:border-slate-700/60 rounded-lg relative shrink-0 h-8 max-w-full overflow-x-auto no-scrollbar">
-                        {/* Option: All */}
-                        <button
-                          onClick={() => handleStatusFilterChange('all')}
-                          className={`relative px-2.5 h-full rounded-md text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 z-10 ${
-                            statusFilter === 'all' ? 'text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          {statusFilter === 'all' && (
-                            <motion.div
-                              layoutId="activeStatusFilterTab"
-                              className="absolute inset-0 bg-[#2563EB] rounded-md shadow-2xs z-0"
-                              transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                            />
-                          )}
-                          <span className="relative z-10 flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'all' ? 'bg-white' : 'bg-slate-900 dark:bg-slate-300'}`} />
-                            <span>All</span>
-                          </span>
-                          <span className={`relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${statusFilter === 'all' ? 'bg-white/25 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                            <AnimatedNumber value={countAll} />
-                          </span>
-                        </button>
-
-                        {/* Option: Completed */}
-                        <button
-                          onClick={() => handleStatusFilterChange('completed')}
-                          className={`relative px-2.5 h-full rounded-md text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 z-10 ${
-                            statusFilter === 'completed' ? 'text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          {statusFilter === 'completed' && (
-                            <motion.div
-                              layoutId="activeStatusFilterTab"
-                              className="absolute inset-0 bg-[#10B981] rounded-md shadow-2xs z-0"
-                              transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                            />
-                          )}
-                          <span className="relative z-10 flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'completed' ? 'bg-white' : 'bg-[#10B981]'}`} />
-                            Completed
-                          </span>
-                          <span className={`relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${statusFilter === 'completed' ? 'bg-white/25 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                            <AnimatedNumber value={countCompleted} />
-                          </span>
-                        </button>
-
-                        {/* Option: In Progress */}
-                        <button
-                          onClick={() => handleStatusFilterChange('in_progress')}
-                          className={`relative px-2.5 h-full rounded-md text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 z-10 ${
-                            statusFilter === 'in_progress' ? 'text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          {statusFilter === 'in_progress' && (
-                            <motion.div
-                              layoutId="activeStatusFilterTab"
-                              className="absolute inset-0 bg-[#2563EB] rounded-md shadow-2xs z-0"
-                              transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                            />
-                          )}
-                          <span className="relative z-10 flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'in_progress' ? 'bg-white' : 'bg-[#2563EB]'}`} />
-                            In Progress
-                          </span>
-                          <span className={`relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${statusFilter === 'in_progress' ? 'bg-white/25 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                            <AnimatedNumber value={countInProgress} />
-                          </span>
-                        </button>
-
-                        {/* Option: Not Started */}
-                        <button
-                          onClick={() => handleStatusFilterChange('not_started')}
-                          className={`relative px-2.5 h-full rounded-md text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 z-10 ${
-                            statusFilter === 'not_started' ? 'text-white' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          {statusFilter === 'not_started' && (
-                            <motion.div
-                              layoutId="activeStatusFilterTab"
-                              className="absolute inset-0 bg-[#64748B] rounded-md shadow-2xs z-0"
-                              transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                            />
-                          )}
-                          <span className="relative z-10 flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'not_started' ? 'bg-white' : 'bg-[#64748B]'}`} />
-                            Not Started
-                          </span>
-                          <span className={`relative z-10 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${statusFilter === 'not_started' ? 'bg-white/25 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                            <AnimatedNumber value={countNotStarted} />
-                          </span>
-                        </button>
-                      </div>
-
-                      {/* MOBILE: Smart Status Filter Dropdown Button */}
-                      <div className="relative min-[660px]:hidden filter-dropdown-container">
-                        <button
-                          type="button"
-                          onClick={() => setIsStatusFilterDropdownOpen(!isStatusFilterDropdownOpen)}
-                          className={`h-8 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                            isStatusFilterDropdownOpen
-                              ? 'bg-blue-50 border-blue-300 text-[#2563EB] ring-2 ring-blue-500/15'
-                              : statusFilter !== 'all'
-                                ? 'bg-blue-50/70 border-blue-300 text-[#2563EB]'
-                                : 'bg-white border-slate-200/90 text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <Filter className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="truncate">
-                              {statusFilter === 'all'
-                                ? 'Filter'
-                                : statusFilter === 'completed'
-                                  ? 'Completed'
-                                  : statusFilter === 'in_progress'
-                                    ? 'In Progress'
-                                    : 'Not Started'}
-                            </span>
-                            {statusFilter !== 'all' && (
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                  statusFilter === 'completed'
-                                    ? 'bg-[#10B981]'
-                                    : statusFilter === 'in_progress'
-                                      ? 'bg-[#2563EB]'
-                                      : 'bg-[#64748B]'
-                                }`}
-                              />
-                            )}
-                          </div>
-                          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${isStatusFilterDropdownOpen ? 'rotate-180 text-[#2563EB]' : ''}`} />
-                        </button>
-
-                        {/* Dropdown Menu */}
-                        <AnimatePresence>
-                          {isStatusFilterDropdownOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                              transition={{ duration: 0.12, ease: 'easeOut' }}
-                              className="absolute left-0 top-full mt-1.5 w-[200px] bg-white border border-slate-200 shadow-xl shadow-slate-900/10 rounded-xl p-1 z-50 text-xs font-medium filter-dropdown text-slate-700 select-none"
-                            >
-                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Filter Status
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleStatusFilterChange('all');
-                                  setIsStatusFilterDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors cursor-pointer my-0.5 ${
-                                  statusFilter === 'all' ? 'bg-blue-50 text-[#2563EB] font-bold' : 'text-slate-700 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900" />
-                                  <span>All</span>
-                                </div>
-                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                                  {countAll}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleStatusFilterChange('completed');
-                                  setIsStatusFilterDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors cursor-pointer my-0.5 ${
-                                  statusFilter === 'completed' ? 'bg-emerald-50 text-emerald-600 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                  <span>Completed</span>
-                                </div>
-                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                                  {countCompleted}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleStatusFilterChange('in_progress');
-                                  setIsStatusFilterDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors cursor-pointer my-0.5 ${
-                                  statusFilter === 'in_progress' ? 'bg-blue-50 text-[#2563EB] font-bold' : 'text-slate-700 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" />
-                                  <span>In Progress</span>
-                                </div>
-                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                                  {countInProgress}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleStatusFilterChange('not_started');
-                                  setIsStatusFilterDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-semibold transition-colors cursor-pointer my-0.5 ${
-                                  statusFilter === 'not_started' ? 'bg-slate-100 text-slate-800 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                                  <span>Not Started</span>
-                                </div>
-                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                                  {countNotStarted}
-                                </span>
-                              </button>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-
-                      {/* View Controls & Sort (Right-aligned with strict 32px height) */}
-                      <div className="flex items-center gap-2 shrink-0 ml-auto">
-                        <CustomSelect<'date' | 'name' | 'progress'>
-                          value={sortCategory}
-                          onChange={(val) => handleSortSelect(val)}
-                          labelPrefix="Sort: "
-                          options={[
-                            {
-                              value: 'date',
-                              label: sortCategory === 'date'
-                                ? (sortDirection === 'desc' ? 'Date (New → Old)' : 'Date (Old → New)')
-                                : 'Date',
-                              icon: <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                            },
-                            {
-                              value: 'name',
-                              label: sortCategory === 'name'
-                                ? (sortDirection === 'asc' ? 'Name (A → Z)' : 'Name (Z → A)')
-                                : 'Name',
-                              icon: <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
-                            },
-                            {
-                              value: 'progress',
-                              label: sortCategory === 'progress'
-                                ? (sortDirection === 'desc' ? 'Progress (High → Low)' : 'Progress (Low → High)')
-                                : 'Progress',
-                              icon: <BarChart2 className="w-3.5 h-3.5 text-slate-500" />
-                            },
-                          ]}
-                        />
-
-                        <div className="flex items-center p-0.5 bg-slate-200/50 dark:bg-slate-800/80 border border-slate-200/90 dark:border-slate-700/60 rounded-lg relative shrink-0 h-8">
-                          <button
-                            type="button"
-                            onClick={() => handleViewModeChange('grid-cards')}
-                            className={`relative w-7 h-7 min-[800px]:w-auto min-[800px]:h-7 px-0 min-[800px]:px-2.5 rounded-md transition-colors cursor-pointer flex items-center justify-center min-[800px]:justify-start gap-0 min-[800px]:gap-1.5 z-10 ${
-                              viewMode.startsWith('grid')
-                                ? 'text-white font-bold'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold'
-                            }`}
-                            title={viewMode === 'grid-cards' ? 'Current: 4-Col Image Grid (Click for Banner Grid)' : 'Current: Banner Grid (Click for 4-Col Image Grid)'}
-                          >
-                            {viewMode.startsWith('grid') && (
-                              <motion.div
-                                layoutId="activeViewTab"
-                                className="absolute inset-0 bg-[#2563EB] rounded-md shadow-2xs z-0"
-                                transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                              />
-                            )}
-                            <LayoutGrid className="w-3.5 h-3.5 relative z-10 shrink-0" />
-                            <span className="text-[11px] hidden min-[800px]:inline relative z-10">
-                              <span className="hidden min-[1200px]:inline">{viewMode === 'grid-cards' ? 'Grid (Cards)' : viewMode === 'grid-banner' ? 'Grid (Banner)' : 'Grid'}</span>
-                              <span className="hidden min-[800px]:inline min-[1200px]:hidden">Grid</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleViewModeChange('list')}
-                            className={`relative w-7 h-7 min-[800px]:w-auto min-[800px]:h-7 px-0 min-[800px]:px-2.5 rounded-md transition-colors cursor-pointer flex items-center justify-center min-[800px]:justify-start gap-0 min-[800px]:gap-1.5 z-10 ${
-                              viewMode === 'list'
-                                ? 'text-white font-bold'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-bold'
-                            }`}
-                            title="List View"
-                          >
-                            {viewMode === 'list' && (
-                              <motion.div
-                                layoutId="activeViewTab"
-                                className="absolute inset-0 bg-[#2563EB] rounded-md shadow-2xs z-0"
-                                transition={{ duration: 0.28, ease: [0.25, 1, 0.5, 1] }}
-                              />
-                            )}
-                            <List className="w-3.5 h-3.5 relative z-10 shrink-0" />
-                            <span className="text-[11px] hidden min-[800px]:inline relative z-10">
-                              List
-                            </span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                      {/* Unified Topics Content Body (Canvas) */}
-                      <div className="p-3 sm:p-4 w-full min-w-0">
-                        {displayTopics.length === 0 ? (
-                          <div className="w-full my-3 border-2 border-dashed border-[#E2E8F0] dark:border-slate-800 rounded-2xl bg-white/60 dark:bg-slate-900/60 py-6 sm:py-8 md:py-9 px-6 flex flex-col items-center justify-center text-center relative select-none">
-                            <h3 className="text-base font-bold text-[#0F172A] dark:text-slate-100">No topics found</h3>
-                            <p className="text-xs text-[#64748B] dark:text-slate-300 mt-1">No topics match the selected status filter.</p>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusFilterChange('all')}
-                              className="mt-3 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
-                            >
-                              Show All Topics
-                            </button>
-                          </div>
-                    ) : viewMode !== 'list' ? (
-                      <div className="w-full">
-                        {/* Cards View Layer */}
-                        <div
-                          ref={cardsRef}
-                          className={`w-full ${viewMode === 'grid-cards' ? 'block' : 'hidden'}`}
-                        >
-                          {/* --- 4-COLUMN IMAGE CARD GRID VIEW (Exact Attached Reference Image Replica) --- */}
-                          <div
-                            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full min-w-0"
-                          >
-                        {displayTopics.map((topic, index) => {
-                          const totalTasks = topic.tasks.length;
-                          const completedTasks = topic.tasks.filter(t => t.completed).length;
-                          
-                          const displayPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          const isCompleted = totalTasks > 0 && completedTasks === totalTasks;
-                          const isNotStarted = completedTasks === 0;
-
-                          const isSelected = currentTopic?.id === topic.id;
-                          const theme = getTopicTheme(topic);
-                          const IconComp = theme.icon;
-                          const iconText = (theme as any).iconText;
-                          const dueCount = getDueCountForTopic(topic);
-
-                          const countText = `${totalTasks} ${totalTasks === 1 ? 'Task' : 'Tasks'}`;
-                          const completedRatioText = `${completedTasks}/${totalTasks} Completed`;
-
-                          const isHighlighted = highlightedTopicId === topic.id;
-                          const isPinAnimating = animatingPinTopicId === topic.id;
-                          const isDeleting = animatingDeleteTopicId === topic.id;
-                          const isNearBottom = index >= Math.max(0, displayTopics.length - 4);
-
-                          return (
-                            <motion.div
-                              layout
-                              key={topic.id}
-                              id={topic.id}
-                              onClick={() => {
-                                if (editingTopicId !== topic.id) {
-                                  setSelectedTopicId(topic.id);
-                                  setIsDetailsDrawerOpen(true);
-                                }
-                              }}
-                              initial={false}
-                              animate={{
-                                opacity: isDeleting ? 0 : 1,
-                                scale: isDeleting ? 0.97 : isPinAnimating ? 1.02 : 1,
-                                y: isDeleting ? -4 : isPinAnimating ? -4 : 0,
-                              }}
-                              exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                              transition={{
-                                layout: {
-                                  duration: 0.4,
-                                  ease: [0.16, 1, 0.3, 1]
-                                },
-                                scale: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-                                y: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-                                opacity: { duration: 0.2 }
-                              }}
-                              className={`bg-white border rounded-xl p-3 sm:p-3.5 transition-colors duration-200 flex flex-col justify-between group cursor-pointer relative min-h-[120px] ${
-                                isPinAnimating
-                                  ? 'border-[#2563EB] ring-2 ring-[#2563EB]/30 bg-blue-50/20 shadow-xl shadow-blue-500/15 z-[20]'
-                                  : activeMenuTopicId === topic.id
-                                      ? 'border-[#E2E8F0] shadow-md z-[100]'
-                                      : isSelected
-                                        ? 'border-[#E2E8F0] shadow-xs z-10'
-                                        : topic.isPinned
-                                          ? 'border-slate-200/90 bg-slate-50/20 shadow-2xs z-10 hover:z-50'
-                                          : 'border-[#E2E8F0] hover:border-[#CBD5E1] shadow-2xs hover:shadow-xs z-10 hover:z-50'
-                              }`}
-                            >
-                              {/* Left Edge Vertical Inline Accent Indicator Bar (Clips flush to card inner boundary, matches topic Icon Color) */}
-                              <div className="absolute inset-0 rounded-[11px] overflow-hidden pointer-events-none z-0">
-                                <div
-                                  className={`absolute left-0 top-0 bottom-0 w-[3.5px] ${theme.bg || theme.cardIconBg || 'bg-[#2563EB]'} preserve-color`}
-                                />
-                              </div>
-
-                              {/* Card Header Row: Dynamic Title Header + 3-Dot Trigger */}
-                              <div className="flex items-start justify-between gap-2 z-10">
-                                <CardTopicHeader
-                                  topic={topic}
-                                  theme={theme}
-                                  iconText={iconText}
-                                  IconComp={IconComp}
-                                  countText={countText}
-                                />
-
-                                {/* Right: Sleek 3-Dot Action Menu Button */}
-                                {editingTopicId !== topic.id && (
-                                  <div className="relative topic-card-menu-container shrink-0 -mr-1">
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        setActiveMenuTopicId(activeMenuTopicId === topic.id ? null : topic.id);
-                                      }}
-                                      className={`p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer topic-card-menu-btn ${
-                                        activeMenuTopicId === topic.id ? 'opacity-100 bg-slate-100 text-slate-900 shadow-2xs' : 'opacity-100 group-hover:opacity-100'
-                                      }`}
-                                      title="Topic options"
-                                    >
-                                      <MoreVertical className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    <AnimatePresence>
-                                      {activeMenuTopicId === topic.id && (
-                                        <motion.div
-                                          initial={{ opacity: 0, scale: 0.95, y: isNearBottom ? 4 : -4 }}
-                                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                                          exit={{ opacity: 0, scale: 0.95, y: isNearBottom ? 4 : -4 }}
-                                          transition={{ duration: 0.15, ease: 'easeOut' }}
-                                          onClick={e => e.stopPropagation()}
-                                          className={`absolute right-0 ${
-                                            isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                                          } w-[190px] bg-white border border-slate-200/90 shadow-xl shadow-slate-900/15 backdrop-blur-md rounded-xl p-1 z-[999] text-xs font-medium topic-card-menu text-slate-700 select-none`}
-                                        >
-                                          {/* Pin to top */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              togglePinTopic(topic.id);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Pin className={`w-3.5 h-3.5 shrink-0 ${topic.isPinned ? 'fill-[#2563EB] text-[#2563EB]' : 'text-slate-500'} preserve-color`} />
-                                            <span className="truncate">{topic.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
-                                          </button>
-
-                                          {/* 2. Rename */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setEditingTopicId(topic.id);
-                                              setEditingTopicTitle(topic.title);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Rename</span>
-                                          </button>
-
-                                          {/* 2.5 Customize Icon & Color */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setCustomizingTopic(topic);
-                                              setCustomColorSelection(topic.customColor || '');
-                                              setCustomIconSelection(topic.customIcon || '');
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Palette className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                                            <span className="truncate">Customize Icon & Color</span>
-                                          </button>
-
-                                          {/* 3. Merge Topic */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setMergeSourceTopic(topic);
-                                              setTargetTopicIdForMerge('');
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <CornerUpRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Merge Topic</span>
-                                          </button>
-
-                                          {/* 4. Move to section */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setMoveSectionSourceTopic(topic);
-                                              setTargetSectionForMove('');
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <FolderOutput className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Move to section</span>
-                                          </button>
-
-                                          {/* 5. Duplicate */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              handleDuplicateTopic(topic.id);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Copy className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Duplicate</span>
-                                          </button>
-
-                                          <div className="my-1 border-t border-slate-100" />
-
-                                          {/* 5. Move to Recycle Bin */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setTopicToDelete(topic);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                            <span className="truncate">Move to Recycle Bin</span>
-                                          </button>
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Card Middle: Progress Line & Percentage (Minimal whitespace) */}
-                              <div className="flex items-center gap-2 my-1.5">
-                                <div className="w-full bg-[#E9EDF3] h-1.5 rounded-full overflow-hidden flex-1">
-                                  <div
-                                    style={{ width: `${displayPercent}%` }}
-                                    className={`h-full rounded-full bg-gradient-to-r ${theme.progressGradient} preserve-color transition-[width] duration-300 ease-in-out`}
-                                  />
-                                </div>
-                                <span className={`text-[10.5px] font-bold shrink-0 min-w-[28px] text-right preserve-color ${
-                                  isCompleted ? theme.textColor : isNotStarted ? 'text-slate-400' : 'text-slate-700'
-                                }`}>
-                                  {displayPercent}%
-                                </span>
-                              </div>
-
-                              {/* Card Footer: 3 Standardized Status Indicators */}
-                              <div className="flex items-center justify-between text-xs font-semibold pt-1.5 border-t border-slate-100">
-                                {isCompleted ? (
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                      <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                                    </div>
-                                    <span className="text-xs font-semibold text-slate-700 truncate">
-                                      Completed
-                                    </span>
-                                  </div>
-                                ) : isNotStarted ? (
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <div className="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center shrink-0">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                                    </div>
-                                    <span className="text-xs font-semibold text-slate-400 truncate">
-                                      Not Started
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                        <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                                      </div>
-                                      <span className="text-xs font-semibold text-slate-700 truncate">
-                                        {completedRatioText}
-                                      </span>
-                                    </div>
-
-                                    {dueCount > 0 && (
-                                      <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                        <div className="w-4 h-4 rounded-full border-[1.5px] border-[#EF4444] flex items-center justify-center shrink-0">
-                                          <div className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-700">
-                                          {dueCount} Due
-                                        </span>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-
-                        {/* Add New Topic Dashed Card */}
-                        <div
-                          onClick={() => {
-                            setNewTopicTitle('');
-                            setIsNewTopicOpen(true);
-                          }}
-                          className="bg-white dark:bg-slate-900/60 border-2 border-dashed border-[#CBD5E1] dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 rounded-xl p-3 sm:p-3.5 transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer min-h-[120px] group hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                            <Plus className="w-4 h-4 stroke-[2.5]" />
-                          </div>
-                          <div className="flex flex-col">
-                            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Add New Topic</h4>
-                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500 mt-0.5">Create a new topic</span>
-                          </div>
-                        </div>
-                      </div>
-                      </div>
-                      
-                      {/* Banner View Layer */}
-                      <div
-                        ref={bannerRef}
-                        className={`w-full ${viewMode === 'grid-banner' ? 'block' : 'hidden'}`}
-                      >
-                        {/* --- GRID BANNER VIEW MODE --- */}
-                        <div
-                          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 w-full min-w-0"
-                        >
-                        {displayTopics.map((topic, index) => {
-                          const totalTasks = topic.tasks.length;
-                          const completedTasks = topic.tasks.filter(t => t.completed).length;
-                          const percent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          const isCompleted = totalTasks > 0 && completedTasks === totalTasks;
-                          const isNotStarted = completedTasks === 0;
-                          const dueCount = getDueCountForTopic(topic);
-                          
-                          const countText = `${totalTasks} ${totalTasks === 1 ? 'Task' : 'Tasks'}`;
-                          const completedRatioText = `${completedTasks}/${totalTasks} Completed`;
-                          
-                          const isSelected = currentTopic?.id === topic.id;
-                          const isPinAnimating = animatingPinTopicId === topic.id;
-                          const isDeleting = animatingDeleteTopicId === topic.id;
-                          const isNearBottom = index >= Math.max(0, displayTopics.length - 3);
-                          const theme = getTopicTheme(topic);
-                          const IconComp = theme.icon;
-                          const iconText = (theme as any).iconText;
-
-                          return (
-                            <motion.div
-                              layout
-                              key={topic.id}
-                              id={topic.id}
-                              onClick={() => {
-                                if (editingTopicId !== topic.id) {
-                                  setSelectedTopicId(topic.id);
-                                  setIsDetailsDrawerOpen(true);
-                                }
-                              }}
-                              animate={{
-                                opacity: isDeleting ? 0 : 1,
-                                scale: isDeleting ? 0.97 : isPinAnimating ? 1.02 : 1,
-                                y: isDeleting ? -4 : isPinAnimating ? -4 : 0,
-                              }}
-                              transition={{
-                                layout: { duration: 0.4, ease: [0.16, 1, 0.3, 1] },
-                                scale: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-                                y: { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
-                              }}
-                              className={`bg-white border rounded-[16px] overflow-visible transition-all duration-200 flex flex-col justify-between group cursor-pointer relative shadow-sm hover:shadow-md ${
-                                isPinAnimating
-                                  ? 'border-[#2563EB] ring-2 ring-[#2563EB]/30 shadow-xl shadow-blue-500/15 z-[20]'
-                                  : activeMenuTopicId === topic.id
-                                      ? 'border-[#E2E8F0] shadow-md z-[100]'
-                                      : topic.isPinned
-                                        ? 'border-slate-200/90 shadow-2xs z-10 hover:z-50'
-                                        : isSelected
-                                          ? 'border-[#E2E8F0] shadow-2xs z-10 hover:z-50'
-                                          : 'border-[#E2E8F0] hover:border-[#CBD5E1] z-10 hover:z-50'
-                              }`}
-                            >
-                              {/* Top Banner Header */}
-                              <div className={`relative h-32 p-4 flex flex-col justify-between rounded-t-[15px]`}>
-                                {/* Watermark & Glow (with overflow-hidden) */}
-                                <div className={`absolute inset-0 rounded-t-[15px] overflow-hidden ${theme.bg} preserve-color`}>
-                                  <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-white/10 blur-xl pointer-events-none" />
-                                  <div className="absolute right-3 top-3 opacity-15 pointer-events-none">
-                                    <IconComp className="w-20 h-20 text-white stroke-[1.2] preserve-color" />
-                                  </div>
-                                </div>
-
-                                {/* Top Row: Icon + Floating Pin Badge on Left, 3-Dot Menu on Right */}
-                                <div className="flex items-center justify-between relative z-20">
-                                  {/* Icon box + floating pin badge */}
-                                  <div className="relative">
-                                    <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-xs border border-white/30 flex items-center justify-center text-white shadow-xs preserve-color">
-                                      {iconText ? (
-                                        <span className="text-white text-xs font-black font-serif leading-none preserve-color">{iconText}</span>
-                                      ) : (
-                                        <IconComp className="w-5 h-5 text-white stroke-[2.2] preserve-color" />
-                                      )}
-                                    </div>
-
-                                    {/* Requirement 2: Pin icon floating on top-right of topic icon box */}
-                                    <AnimatePresence>
-                                      {topic.isPinned && (
-                                        <motion.div
-                                          initial={{ scale: 0, opacity: 0 }}
-                                          animate={{ scale: 1, opacity: 1 }}
-                                          exit={{ scale: 0, opacity: 0 }}
-                                          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                                          className="absolute -top-3.5 -right-3.5 w-6 h-6 bg-white rounded-full border-[1.5px] shadow-sm flex items-center justify-center z-20"
-                                          style={{ borderColor: theme.bg?.match(/\[(.*?)\]/)?.[1] || '#2563EB' }}
-                                          title="Pinned to top"
-                                        >
-                                          <Pin className={`w-3.5 h-3.5 ${theme.pinIconColor || 'text-[#2563EB] fill-[#2563EB]'} preserve-color rotate-45`} />
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-
-                                  {/* Requirement 1: Top right corner e JUST 3 dot menu */}
-                                  <div className="relative topic-card-menu-container">
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        setActiveMenuTopicId(activeMenuTopicId === topic.id ? null : topic.id);
-                                      }}
-                                      className={`p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/20 transition-all cursor-pointer topic-card-menu-btn ${
-                                        activeMenuTopicId === topic.id ? 'opacity-100 bg-white/25 text-white' : 'max-md:opacity-100 opacity-80 group-hover:opacity-100'
-                                      }`}
-                                      title="Topic options"
-                                    >
-                                      <MoreVertical className="w-4 h-4 stroke-[2.2]" />
-                                    </button>
-
-                                    {/* Dropdown Menu (Card View Style) */}
-                                    <AnimatePresence>
-                                      {activeMenuTopicId === topic.id && (
-                                        <motion.div
-                                          initial={{ opacity: 0, scale: 0.95, y: isNearBottom ? 4 : -4 }}
-                                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                                          exit={{ opacity: 0, scale: 0.95, y: isNearBottom ? 4 : -4 }}
-                                          transition={{ duration: 0.15, ease: 'easeOut' }}
-                                          onClick={e => e.stopPropagation()}
-                                          className={`absolute right-0 ${
-                                            isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                                          } w-[190px] bg-white border border-slate-200/90 shadow-xl shadow-slate-900/15 backdrop-blur-md rounded-xl p-1 z-[999] text-xs font-medium topic-card-menu text-slate-700 select-none`}
-                                        >
-                                          {/* 1. Pin to top / Unpin */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              togglePinTopic(topic.id);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Pin className={`w-3.5 h-3.5 shrink-0 ${topic.isPinned ? 'fill-[#2563EB] text-[#2563EB]' : 'text-slate-500'} preserve-color`} />
-                                            <span className="truncate">{topic.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
-                                          </button>
-
-                                          {/* 2. Rename */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setEditingTopicId(topic.id);
-                                              setEditingTopicTitle(topic.title);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Rename</span>
-                                          </button>
-
-                                          {/* 3. Merge Topic */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setMergeSourceTopic(topic);
-                                              setTargetTopicIdForMerge('');
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <CornerUpRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Merge Topic</span>
-                                          </button>
-
-                                          {/* 4. Move to section */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setMoveSectionSourceTopic(topic);
-                                              setTargetSectionForMove('');
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <FolderOutput className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Move to section</span>
-                                          </button>
-
-                                          {/* 5. Duplicate */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              handleDuplicateTopic(topic.id);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                          >
-                                            <Copy className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                            <span className="truncate">Duplicate</span>
-                                          </button>
-
-                                          <div className="my-1 border-t border-slate-100" />
-
-                                          {/* 5. Move to Recycle Bin */}
-                                          <button
-                                            onClick={() => {
-                                              setActiveMenuTopicId(null);
-                                              setTopicToDelete(topic);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                            <span className="truncate">Move to Recycle Bin</span>
-                                          </button>
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                </div>
-
-                                {/* Requirement 3: Topic Title & Subtopic count inside Banner */}
-                                <div className="relative z-10 min-w-0 pr-2">
-                                  <h3 className="text-base font-semibold font-serif text-white tracking-tight leading-snug truncate drop-shadow-xs">
-                                    {topic.title}
-                                  </h3>
-                                  <p className="text-xs font-medium text-white/85 mt-0.5 truncate">
-                                    {countText}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Requirement 4: Topic progress dependent on task count */}
-                              <div className="p-4 flex flex-col gap-3 bg-white rounded-b-[15px]">
-                                {/* Progress Bar */}
-                                <div className="flex flex-col gap-1.5">
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="font-semibold text-slate-500">Progress</span>
-                                    <span className={`font-bold ${theme.textColor} preserve-color`}>
-                                      {percent}%
-                                    </span>
-                                  </div>
-                                  <div className="w-full bg-[#F1F5F9] h-2 rounded-full overflow-hidden">
-                                    <div
-                                      style={{ width: `${percent}%` }}
-                                      className={`h-full rounded-full bg-gradient-to-r ${theme.progressGradient} preserve-color transition-[width] duration-300 ease-in-out`}
-                                    />
-                                  </div>
-                                       {/* Status & Completed Tasks */}
-                                <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/80 text-xs font-semibold">
-                                  {isCompleted ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                        <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                                      </div>
-                                      <span className="text-xs font-semibold text-slate-700">Completed</span>
-                                    </div>
-                                  ) : isNotStarted ? (
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center shrink-0">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                                      </div>
-                                      <span className="text-xs font-semibold text-slate-400">Not Started</span>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <div className="flex items-center gap-1.5">
-                                        <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
-                                          <Check className="w-2.5 h-2.5 stroke-[3.5]" />
-                                        </div>
-                                        <span className="text-xs font-semibold text-slate-700">{completedRatioText}</span>
-                                      </div>
-
-                                      {dueCount > 0 && (
-                                        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                          <div className="w-4 h-4 rounded-full border-[1.5px] border-[#EF4444] flex items-center justify-center shrink-0">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                                          </div>
-                                          <span className="text-xs font-semibold text-slate-700">
-                                            {dueCount} Due
-                                          </span>
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </div>                            </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-
-                        {/* Add New Topic Dashed Card for Banner View */}
-                        <div
-                          onClick={() => {
-                            setNewTopicTitle('');
-                            setIsNewTopicOpen(true);
-                          }}
-                          className="bg-white dark:bg-slate-900/60 border-2 border-dashed border-[#CBD5E1] dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 rounded-[16px] p-5 transition-all duration-200 flex flex-col items-center justify-center gap-3 cursor-pointer min-h-[160px] group hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
-                        >
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                            <Plus className="w-5 h-5 stroke-[2.5]" />
-                          </div>
-                          <div className="flex flex-col text-center">
-                            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Add New Topic</h4>
-                            <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500 mt-0.5">Create a new topic</span>
-                          </div>
-                        </div>
-                      </div>
-                      </div>
-
-                      </div>
-                    ) : (
-                      <div className="w-full">
-                        {/* List View Layer */}
-                        {/* --- LIST VIEW MODE (Accordion List) --- */}
-                        <div
-                          className="space-y-2.5"
-                        >
-                        {displayTopics.map((topic, index) => {
-                          const totalTasks = topic.tasks.length;
-                          const completedTasks = topic.tasks.filter(t => t.completed).length;
-                          const percent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          const allDone = totalTasks > 0 && completedTasks === totalTasks;
-                          const isSelected = currentTopic?.id === topic.id;
-                          const isPinAnimating = animatingPinTopicId === topic.id;
-                          const theme = getTopicTheme(topic);
-                          const isNearBottom = index >= Math.max(0, displayTopics.length - 3);
-                          const IconComp = theme.icon;
-                          const iconText = (theme as any).iconText;
-
-                          return (
-                            <motion.div
-                              layout
-                              key={topic.id}
-                              id={topic.id}
-                              onClick={() => setSelectedTopicId(topic.id)}
-                              animate={{
-                                scale: isPinAnimating ? 1.01 : 1,
-                                y: isPinAnimating ? -2 : 0,
-                              }}
-                              transition={{
-                                layout: {
-                                  duration: 0.4,
-                                  ease: [0.16, 1, 0.3, 1]
-                                },
-                                scale: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-                                y: { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
-                              }}
-                              className={`bg-white dark:bg-slate-900 border rounded-[8px] overflow-visible transition-colors duration-200 relative ${
-                                isPinAnimating
-                                  ? 'border-[#2563EB] ring-2 ring-[#2563EB]/30 shadow-xl shadow-blue-500/15 z-[20]'
-                                  : activeMenuTopicId === topic.id
-                                      ? 'border-[#E2E8F0] dark:border-slate-700 shadow-md z-[100]'
-                                      : topic.isPinned
-                                        ? 'border-slate-200/90 dark:border-slate-700 shadow-2xs z-10 hover:z-50'
-                                        : isSelected
-                                          ? 'border-[#E2E8F0] dark:border-slate-700 z-10 hover:z-50'
-                                          : 'border-[#E2E8F0] dark:border-slate-700 hover:border-[#CBD5E1] dark:hover:border-slate-600 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.05)] z-10 hover:z-50'
-                              }`}
-                            >
-                            {/* Topic Accordion Header */}
-                            <div
-                              onClick={() => {
-                                setTopics(prev =>
-                                  prev.map(t =>
-                                    t.id === topic.id ? { ...t, expanded: !t.expanded } : t
-                                  )
-                                );
-                              }}
-                              className="px-5 h-[42px] flex items-center justify-between border-b border-[#E2E8F0] dark:border-slate-700 gap-3 bg-white dark:bg-slate-900 cursor-pointer select-none"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="relative shrink-0">
-                                  <div className={`w-6 h-6 rounded-md ${theme.cardIconBg} flex items-center justify-center text-white shadow-2xs`}>
-                                    {iconText ? (
-                                      <span className="text-white text-[10px] font-black font-serif leading-none">{iconText}</span>
-                                    ) : (
-                                      <IconComp className={`w-3 h-3 ${theme.cardIconColor} stroke-[2.2]`} />
-                                    )}
-                                  </div>
-
-                                  <AnimatePresence>
-                                    {topic.isPinned && (
-                                      <motion.div
-                                        initial={{ scale: 0, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        exit={{ scale: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                                        className="absolute -top-1 -right-1 w-4 h-4 bg-white dark:bg-slate-900 rounded-full border-[1.5px] shadow-xs flex items-center justify-center z-10"
-                                        style={{ borderColor: theme.bg?.match(/\[(.*?)\]/)?.[1] || '#2563EB' }}
-                                        title="Pinned to top"
-                                      >
-                                        <Pin className={`w-2.5 h-2.5 ${theme.pinIconColor || 'text-[#2563EB] fill-[#2563EB]'} rotate-45`} />
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-
-                                <span className="font-bold text-sm text-[#0F172A] dark:text-slate-100 truncate">
-                                  {topic.title}
-                                </span>
-
-                                {/* Progress Percentage Badge */}
-                                <span className="inline-flex items-center justify-center h-[22px] min-w-[40px] px-2.5 bg-gradient-to-r from-[#2563EB] to-[#3B82F6] text-white text-[11px] font-extrabold rounded-full ml-1 shadow-2xs leading-none text-center select-none">
-                                  {percent}%
-                                </span>
-
-                                {/* Mark All Checkbox & Label */}
-                                <label
-                                  className="flex items-center gap-2 text-xs font-semibold text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 cursor-pointer ml-4 select-none"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={allDone}
-                                    onChange={() => toggleMarkAllTopic(topic.id)}
-                                    className="w-4 h-4 border border-[#CBD5E1] dark:border-slate-600 rounded-[4px] accent-[#2563EB] cursor-pointer"
-                                  />
-                                  <span>Mark All</span>
-                                </label>
-                              </div>
-
-                              {/* Header Action Buttons matching screenshot */}
-                              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                <button
-                                  onClick={() => {
-                                    setAddingTaskTopicId(
-                                      addingTaskTopicId === topic.id ? null : topic.id
-                                    );
-                                  }}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Add Subtask"
-                                >
-                                  <Plus className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  onClick={() => {
-                                    setEditingTopicId(topic.id);
-                                    setEditingTopicTitle(topic.title);
-                                  }}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Edit Topic"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  onClick={() => moveTopicIndex(topic.id, 'up')}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Reorder Topic"
-                                >
-                                  <ArrowUpDown className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  onClick={() => showToast(`Notifications enabled for "${topic.title}"`)}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Topic Notifications"
-                                >
-                                  <Bell className="w-4 h-4" />
-                                </button>
-                                <div className="relative topic-card-menu-container">
-                                  <button
-                                     onClick={e => {
-                                       e.stopPropagation();
-                                       setActiveMenuTopicId(activeMenuTopicId === topic.id ? null : topic.id);
-                                     }}
-                                     className={`p-1.5 rounded-md text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 transition-colors cursor-pointer topic-card-menu-btn ${
-                                       activeMenuTopicId === topic.id ? 'bg-[#F1F5F9] dark:bg-slate-800 text-[#0F172A] dark:text-white' : ''
-                                     }`}
-                                     title="More Options"
-                                   >
-                                    <MoreVertical className="w-4 h-4" />
-                                  </button>
-
-                                  <AnimatePresence>
-                                    {activeMenuTopicId === topic.id && (
-                                      <motion.div
-                                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                        transition={{ duration: 0.15, ease: 'easeOut' }}
-                                        onClick={e => e.stopPropagation()}
-                                        className={`absolute right-0 ${
-                                          isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                                        } w-[190px] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-900/15 backdrop-blur-md rounded-xl p-1 z-[999] text-xs font-medium topic-card-menu text-slate-700 dark:text-slate-200 select-none`}
-                                      >
-                                        {/* Pin to top */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            togglePinTopic(topic.id);
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                        >
-                                          <Pin className={`w-3.5 h-3.5 shrink-0 ${topic.isPinned ? 'fill-[#2563EB] text-[#2563EB]' : 'text-slate-500'}`} />
-                                          <span className="truncate">{topic.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
-                                        </button>
-
-                                        {/* Rename */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            setEditingTopicId(topic.id);
-                                            setEditingTopicTitle(topic.title);
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                        >
-                                          <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                          <span className="truncate">Rename</span>
-                                        </button>
-
-                                        {/* Merge Topic */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            setMergeSourceTopic(topic);
-                                            setTargetTopicIdForMerge('');
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                        >
-                                          <CornerUpRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                          <span className="truncate">Merge Topic</span>
-                                        </button>
-
-                                        {/* Move to section */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            setMoveSectionSourceTopic(topic);
-                                            setTargetSectionForMove('');
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                        >
-                                          <FolderOutput className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                          <span className="truncate">Move to section</span>
-                                        </button>
-
-                                        {/* Duplicate */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            handleDuplicateTopic(topic.id);
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                        >
-                                          <Copy className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                          <span className="truncate">Duplicate</span>
-                                        </button>
-
-                                        <div className="my-1 border-t border-slate-100" />
-
-                                        {/* Move to Recycle Bin */}
-                                        <button
-                                          onClick={() => {
-                                            setActiveMenuTopicId(null);
-                                            setTopicToDelete(topic);
-                                          }}
-                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                          <span className="truncate">Move to Recycle Bin</span>
-                                        </button>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Accordion Content Body */}
-                            <AnimatePresence>
-                              {topic.expanded && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="flex flex-col bg-white overflow-hidden"
-                                >
-                                  {/* Add Task Input Row */}
-                                  {addingTaskTopicId === topic.id && (
-                                    <div className="flex items-center gap-2 p-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                                      <input
-                                        type="search"
-                                        autoComplete="one-time-code"
-                                        autoCorrect="off"
-                                        autoCapitalize="off"
-                                        spellCheck={false}
-                                        aria-autocomplete="none"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                        data-bwignore="true"
-                                        value={newTaskTitle}
-                                        onChange={e => setNewTaskTitle(e.target.value)}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') handleAddTask(topic.id);
-                                        }}
-                                        placeholder="Subtask title..."
-                                        autoFocus
-                                        className="flex-1 text-xs bg-white border border-[#E2E8F0] px-3 py-1.5 rounded-[6px] focus:outline-hidden focus:border-[#2563EB] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAddTask(topic.id)}
-                                        className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-bold rounded-[6px] hover:bg-[#1D4ED8] cursor-pointer"
-                                      >
-                                        Add
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setAddingTaskTopicId(null)}
-                                        className="p-1.5 text-[#64748B] hover:bg-[#E2E8F0] rounded-[6px] cursor-pointer"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {/* Task Items List matching screenshot */}
-                                  {topic.tasks.length === 0 ? (
-                                    <div className="py-6 text-center text-xs text-[#94A3B8]">
-                                      No subtasks created yet. Click "+" to add one.
-                                    </div>
-                                  ) : (
-                                    topic.tasks.map(task => {
-                                      const isEditingThisTask = editingTaskId?.topicId === topic.id && editingTaskId?.taskId === task.id;
-                                      const isMenuOpenThisTask = activeMenuTaskId === `${topic.id}-${task.id}`;
-
-                                      return (
-                                        <div
-                                          key={task.id}
-                                          className={`group px-5 h-[40px] flex items-center justify-between border-b border-[#F1F5F9] last:border-b-0 hover:bg-[#FAFBFD] transition-colors relative ${
-                                            isMenuOpenThisTask ? 'z-[99999] bg-white' : 'z-0'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-3">
-                                            <GripVertical className="w-4 h-4 text-[#94A3B8] cursor-grab shrink-0" />
-                                            <div
-                                              onClick={() => toggleTaskCompleted(topic.id, task.id)}
-                                              className="cursor-pointer shrink-0"
-                                            >
-                                              {task.completed ? (
-                                                <div className="w-4 h-4 bg-[#2563EB] rounded-[4px] flex items-center justify-center text-white">
-                                                  <Check className="w-3 h-3 stroke-[3]" />
-                                                </div>
-                                              ) : (
-                                                <div className="w-4 h-4 border border-[#CBD5E1] rounded-[4px] bg-white hover:border-[#2563EB]" />
-                                              )}
-                                            </div>
-
-                                            {/* Inline Task Rename or Static Title */}
-                                            {isEditingThisTask ? (
-                                              <div className="flex items-center gap-1.5 flex-1" onClick={e => e.stopPropagation()}>
-                                                <input
-                                                  type="text"
-                                                  value={editingTaskTitle}
-                                                  onChange={e => setEditingTaskTitle(e.target.value)}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
-                                                      e.preventDefault();
-                                                      handleSaveRenameTask(topic.id, task.id);
-                                                    } else if (e.key === 'Escape') {
-                                                      e.preventDefault();
-                                                      setEditingTaskId(null);
-                                                    }
-                                                  }}
-                                                  autoFocus
-                                                  className="flex-1 text-[13px] font-medium text-[#0F172A] bg-white border border-[#2563EB] rounded px-2 py-0.5 outline-none"
-                                                />
-                                                {/* Save Button */}
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={e => {
-                                                    e.preventDefault();
-                                                    handleSaveRenameTask(topic.id, task.id);
-                                                  }}
-                                                  className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors shrink-0 cursor-pointer"
-                                                  title="Save (Enter)"
-                                                >
-                                                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                                </button>
-                                                {/* Cancel Button */}
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={e => {
-                                                    e.preventDefault();
-                                                    setEditingTaskId(null);
-                                                  }}
-                                                  className="text-slate-400 hover:text-slate-600 transition-colors shrink-0 cursor-pointer"
-                                                  title="Cancel (Esc)"
-                                                >
-                                                  <X className="w-3.5 h-3.5" />
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <span className="text-[13px] font-normal text-[#0F172A] truncate">
-                                                {task.title}
-                                              </span>
-                                            )}
-                                          </div>
-
-                                          {/* Task Metadata & Action matching screenshot */}
-                                          <div className="flex items-center shrink-0">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569] mr-6">
-                                              <Calendar className="w-4 h-4 text-[#64748B]" />
-                                              <span>{task.date}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569] mr-6">
-                                              <Clock className="w-4 h-4 text-[#64748B]" />
-                                              <span>{task.time}</span>
-                                            </div>
-
-                                            {/* 3-Dot Dropdown Options */}
-                                            <div className={`relative ${isMenuOpenThisTask ? 'z-[99999]' : 'z-10'}`}>
-                                              <button
-                                                onClick={e => {
-                                                  e.stopPropagation();
-                                                  setActiveMenuTaskId(isMenuOpenThisTask ? null : `${topic.id}-${task.id}`);
-                                                }}
-                                                className={`p-1 rounded-[4px] transition-colors cursor-pointer task-item-menu-btn ${
-                                                  isMenuOpenThisTask ? 'bg-[#F1F5F9] text-[#0F172A]' : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9]'
-                                                }`}
-                                                title="Task options"
-                                              >
-                                                <MoreVertical className="w-4 h-4" />
-                                              </button>
-
-                                              <AnimatePresence>
-                                                {isMenuOpenThisTask && (
-                                                  <motion.div
-                                                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                    transition={{ duration: 0.12, ease: 'easeOut' }}
-                                                    onClick={e => e.stopPropagation()}
-                                                    className="absolute right-0 top-full mt-1 w-[185px] whitespace-nowrap bg-white border border-slate-200/90 shadow-2xl shadow-slate-900/20 backdrop-blur-md rounded-xl p-1 z-[999999] text-xs font-medium task-item-menu text-slate-700 select-none"
-                                                  >
-                                                    {/* 1. Rename */}
-                                                    <button
-                                                      onClick={() => handleStartRenameTask(topic.id, task)}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                                    >
-                                                      <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                                      <span className="truncate">Rename</span>
-                                                    </button>
-
-
-                                                    {/* 2. Edit (Placeholder) */}
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveMenuTaskId(null);
-                                                        showToast('Task details edit coming soon');
-                                                      }}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                                    >
-                                                      <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                                      <span className="truncate">Edit</span>
-                                                    </button>
-
-                                                    <div className="my-1 border-t border-slate-100" />
-
-                                                    {/* 3. Move to Recycle Bin */}
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveMenuTaskId(null);
-                                                        setTaskToDelete({ topicId: topic.id, task });
-                                                      }}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                                    >
-                                                      <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                                      <span className="truncate">Move to Recycle Bin</span>
-                                                    </button>
-                                                  </motion.div>
-                                                )}
-                                              </AnimatePresence>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                      </div>
-                    )}
-                    </div>
-                  </div>
-                )}
+                  <SmartTopicGeneratorBanner
+                    isGeneratorSyntaxHelpOpen={isGeneratorSyntaxHelpOpen}
+                    setIsGeneratorSyntaxHelpOpen={setIsGeneratorSyntaxHelpOpen}
+                    generatorInputRef={generatorInputRef as any}
+                    generatorInput={generatorInput}
+                    setGeneratorInput={setGeneratorInput}
+                    handleQuickAddTopic={handleQuickAddTopic}
+                    isGenerating={isGenerating}
+                    getTopicTheme={getTopicTheme}
+                  />
+
+                  <TopicsCanvas
+                    filteredTopics={filteredTopics}
+                    displayTopics={displayTopics}
+                    statusFilter={statusFilter}
+                    handleStatusFilterChange={handleStatusFilterChange}
+                    isStatusFilterDropdownOpen={isStatusFilterDropdownOpen}
+                    setIsStatusFilterDropdownOpen={setIsStatusFilterDropdownOpen}
+                    countAll={countAll}
+                    countCompleted={countCompleted}
+                    countInProgress={countInProgress}
+                    countNotStarted={countNotStarted}
+                    sortCategory={sortCategory}
+                    sortDirection={sortDirection}
+                    handleSortSelect={handleSortSelect}
+                    viewMode={viewMode}
+                    handleViewModeChange={handleViewModeChange}
+                    cardsRef={cardsRef as any}
+                    bannerRef={bannerRef as any}
+                    currentTopic={currentTopic}
+                    getTopicTheme={getTopicTheme}
+                    getDueCountForTopic={getDueCountForTopic}
+                    highlightedTopicId={highlightedTopicId}
+                    animatingPinTopicId={animatingPinTopicId}
+                    animatingDeleteTopicId={animatingDeleteTopicId}
+                    editingTopicId={editingTopicId}
+                    setEditingTopicId={setEditingTopicId}
+                    editingTopicTitle={editingTopicTitle}
+                    setEditingTopicTitle={setEditingTopicTitle}
+                    selectedTopicId={selectedTopicId}
+                    setSelectedTopicId={setSelectedTopicId}
+                    setIsDetailsDrawerOpen={setIsDetailsDrawerOpen}
+                    activeMenuTopicId={activeMenuTopicId}
+                    setActiveMenuTopicId={setActiveMenuTopicId}
+                    togglePinTopic={togglePinTopic}
+                    setCustomizingTopic={setCustomizingTopic}
+                    setCustomColorSelection={setCustomColorSelection}
+                    setCustomIconSelection={setCustomIconSelection}
+                    setMergeSourceTopic={setMergeSourceTopic}
+                    setTargetTopicIdForMerge={setTargetTopicIdForMerge}
+                    setMoveSectionSourceTopic={setMoveSectionSourceTopic}
+                    setTargetSectionForMove={setTargetSectionForMove}
+                    handleDuplicateTopic={handleDuplicateTopic}
+                    setTopicToDelete={setTopicToDelete}
+                    setNewTopicTitle={setNewTopicTitle}
+                    setIsNewTopicOpen={setIsNewTopicOpen}
+                    setIsShortcutsOpen={setIsShortcutsOpen}
+                  />
                 </div>
 
               {/* Professional Footer Pushed to Screen Bottom */}
@@ -10128,1709 +6526,6 @@ export function App() {
           </AnimatePresence>
         </div>
 
-      {/* --- MODALS --- */}
-
-      {/* Keyboard Shortcuts & Feature Guide Modal */}
-      <ShortcutsAndGuideModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
-
-      {/* 3. New Workspace Modal */}
-      <AnimatePresence>
-        {isNewWorkspaceOpen && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.15, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setIsNewWorkspaceOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: mobileKeyboardBottomInset > 0 ? -Math.max(10, Math.round(mobileKeyboardBottomInset / 2) - 8) : 0,
-                transition: {
-                  type: 'spring',
-                  damping: 32,
-                  stiffness: 340,
-                  mass: 0.85
-                }
-              }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden transform-gpu"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Create new workspace</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Organize your projects, sections, and topics in one place.</p>
-                </div>
-                <button
-                  onClick={() => setIsNewWorkspaceOpen(false)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Modal Body Container (div instead of form to bypass Android/iOS credential heuristics) */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Workspace name</label>
-                    <span className={`text-[11px] font-semibold ${
-                      newWorkspaceName.replace(/\s+/g, ' ').trim().length > 40 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {newWorkspaceName.replace(/\s+/g, ' ').trim().length}/40
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    id="new-workspace-name-input"
-                    name="workspace-name-search"
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="false"
-                    inputMode="search"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    maxLength={40}
-                    value={newWorkspaceName}
-                    onChange={e => setNewWorkspaceName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCreateWorkspace(e);
-                      }
-                    }}
-                    placeholder="e.g. English Literature"
-                    autoFocus
-                    className={`w-full h-[36px] bg-slate-50 border rounded-lg font-serif text-[14px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-colors px-3.5 ${
-                      newWorkspaceName.replace(/\s+/g, ' ').trim().length > 40
-                        ? 'border-red-500'
-                        : 'border-slate-200 focus:border-[#176BFF]'
-                    }`}
-                  />
-                  {newWorkspaceName.replace(/\s+/g, ' ').trim().length > 40 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Workspace name cannot exceed 40 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewWorkspaceOpen(false)}
-                    className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCreateWorkspace}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    Create Workspace
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Create New Topic Modal */}
-      <AnimatePresence>
-        {isNewTopicOpen && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.15, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setIsNewTopicOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: mobileKeyboardBottomInset > 0 ? -Math.max(10, Math.round(mobileKeyboardBottomInset / 2) - 8) : 0,
-                transition: {
-                  type: 'spring',
-                  damping: 32,
-                  stiffness: 340,
-                  mass: 0.85
-                }
-              }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden transform-gpu"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Create new topic</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Add a new topic to organize your learning tasks and notes.</p>
-                </div>
-                <button
-                  onClick={() => setIsNewTopicOpen(false)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Modal Body Container */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Topic title</label>
-                    <span className={`text-[11px] font-semibold ${
-                      newTopicTitle.replace(/\s+/g, ' ').trim().length > 45 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {newTopicTitle.replace(/\s+/g, ' ').trim().length}/45
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    id="new-topic-title-input"
-                    name="topic-title-search"
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="false"
-                    inputMode="search"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    maxLength={45}
-                    value={newTopicTitle}
-                    onChange={e => setNewTopicTitle(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCreateTopicModal(e);
-                      }
-                    }}
-                    placeholder="e.g. Quantum Mechanics, Organic Chemistry..."
-                    autoFocus
-                    className={`w-full h-[36px] bg-slate-50 border rounded-lg font-serif text-[14px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-colors px-3.5 ${
-                      newTopicTitle.replace(/\s+/g, ' ').trim().length > 45
-                        ? 'border-red-500'
-                        : 'border-slate-200 focus:border-[#176BFF]'
-                    }`}
-                  />
-                  {newTopicTitle.replace(/\s+/g, ' ').trim().length > 45 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Topic name cannot exceed 45 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-between mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNewTopicOpen(false);
-                      setIsSmartStudioOpen(true);
-                    }}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1742BF] rounded-lg shadow-sm shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-white" />
-                    <span className="hidden sm:inline">Studio Mode</span>
-                  </button>
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsNewTopicOpen(false)}
-                      className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCreateTopicModal}
-                      className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                    >
-                      Create Topic
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <SmartTopicStudioModal 
-        isOpen={isSmartStudioOpen} 
-        onClose={() => setIsSmartStudioOpen(false)} 
-        onSave={handleCreateTopicsFromStudio} 
-        sections={currentWorkspaceSections.map(s => s.name)}
-        activeSectionName={activeSection || currentWorkspaceSections[0]?.name || ''} 
-        initialMode={smartStudioInitialMode}
-      />
-
-      {/* Rename Workspace Modal */}
-      <AnimatePresence>
-        {editingWorkspaceId && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.15, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setEditingWorkspaceId(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: mobileKeyboardBottomInset > 0 ? -Math.max(10, Math.round(mobileKeyboardBottomInset / 2) - 8) : 0,
-                transition: {
-                  type: 'spring',
-                  damping: 32,
-                  stiffness: 340,
-                  mass: 0.85
-                }
-              }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden transform-gpu"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Rename workspace</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Rename your workspace to better organize your subjects.</p>
-                </div>
-                <button
-                  onClick={() => setEditingWorkspaceId(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Modal Body Container (div instead of form to bypass Android/iOS credential heuristics) */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Workspace name</label>
-                    <span className={`text-[11px] font-semibold ${
-                      editingWorkspaceName.replace(/\s+/g, ' ').trim().length > 40 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {editingWorkspaceName.replace(/\s+/g, ' ').trim().length}/40
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    id="rename-workspace-input"
-                    autoComplete="one-time-code"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    aria-autocomplete="none"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    data-bwignore="true"
-                    maxLength={40}
-                    value={editingWorkspaceName}
-                    onChange={e => setEditingWorkspaceName(e.target.value)}
-                    ref={el => {
-                      if (el && !el.dataset.initSelected) {
-                        el.dataset.initSelected = 'true';
-                        setTimeout(() => el.select(), 20);
-                      }
-                    }}
-                    onClick={e => {
-                      const input = e.currentTarget;
-                      if (input.selectionStart === 0 && input.selectionEnd === input.value.length && input.value.length > 0) {
-                        const len = input.value.length;
-                        input.setSelectionRange(len, len);
-                      }
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveRenameWorkspace(e);
-                      }
-                    }}
-                    placeholder="e.g. Premium Workspace, HSC 2026..."
-                    autoFocus
-                    className={`w-full h-[36px] bg-slate-50 border rounded-lg font-serif text-[14px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-colors px-3.5 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
-                      editingWorkspaceName.replace(/\s+/g, ' ').trim().length > 40
-                        ? 'border-red-500'
-                        : 'border-slate-200 focus:border-[#176BFF]'
-                    }`}
-                  />
-                  {editingWorkspaceName.replace(/\s+/g, ' ').trim().length > 40 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Workspace name cannot exceed 40 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setEditingWorkspaceId(null)}
-                    className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveRenameWorkspace}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    Save Workspace
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Rename Section Modal */}
-      <AnimatePresence>
-        {editingSection && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.15, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setEditingSection(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: mobileKeyboardBottomInset > 0 ? -Math.max(10, Math.round(mobileKeyboardBottomInset / 2) - 8) : 0,
-                transition: {
-                  type: 'spring',
-                  damping: 32,
-                  stiffness: 340,
-                  mass: 0.85
-                }
-              }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden transform-gpu"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Rename section</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Rename this section tab in your workspace.</p>
-                </div>
-                <button
-                  onClick={() => setEditingSection(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Modal Body Container */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Section name</label>
-                    <span className={`text-[11px] font-semibold ${
-                      editingSectionName.replace(/\s+/g, ' ').trim().length > 35 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {editingSectionName.replace(/\s+/g, ' ').trim().length}/35
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    id="rename-section-input"
-                    autoComplete="one-time-code"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    aria-autocomplete="none"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    data-bwignore="true"
-                    maxLength={35}
-                    value={editingSectionName}
-                    onChange={e => setEditingSectionName(e.target.value)}
-                    ref={el => {
-                      if (el && !el.dataset.initSelected) {
-                        el.dataset.initSelected = 'true';
-                        setTimeout(() => el.select(), 20);
-                      }
-                    }}
-                    onClick={e => {
-                      const input = e.currentTarget;
-                      if (input.selectionStart === 0 && input.selectionEnd === input.value.length && input.value.length > 0) {
-                        const len = input.value.length;
-                        input.setSelectionRange(len, len);
-                      }
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveRenameSection(e);
-                      }
-                    }}
-                    placeholder="e.g. Grammar, Physics, Math..."
-                    autoFocus
-                    className={`w-full h-[36px] bg-slate-50 border rounded-lg font-serif text-[14px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-colors px-3.5 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
-                      editingSectionName.replace(/\s+/g, ' ').trim().length > 35
-                        ? 'border-red-500'
-                        : 'border-slate-200 focus:border-[#176BFF]'
-                    }`}
-                  />
-                  {editingSectionName.replace(/\s+/g, ' ').trim().length > 35 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Section name cannot exceed 35 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setEditingSection(null)}
-                    className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveRenameSection}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    Save Section
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 4. New Section Modal */}
-      <AnimatePresence>
-        {isNewSectionOpen && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.15, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setIsNewSectionOpen(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 12 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                y: mobileKeyboardBottomInset > 0 ? -Math.max(10, Math.round(mobileKeyboardBottomInset / 2) - 8) : 0,
-                transition: {
-                  type: 'spring',
-                  damping: 32,
-                  stiffness: 340,
-                  mass: 0.85
-                }
-              }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.12, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden transform-gpu"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Create new section</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Add a new section tab to group related topics in your workspace.</p>
-                </div>
-                <button
-                  onClick={() => setIsNewSectionOpen(false)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Modal Body Container */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Section name</label>
-                    <span className={`text-[11px] font-semibold ${
-                      newSectionName.replace(/\s+/g, ' ').trim().length > 35 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {newSectionName.replace(/\s+/g, ' ').trim().length}/35
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    id="new-section-input"
-                    name="new-section-search"
-                    autoComplete="off"
-                    autoCorrect="on"
-                    autoCapitalize="words"
-                    spellCheck="false"
-                    inputMode="search"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    maxLength={35}
-                    value={newSectionName}
-                    onChange={e => setNewSectionName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleCreateSection(e);
-                      }
-                    }}
-                    placeholder="e.g. Grammar, Vocabulary, Physics..."
-                    autoFocus
-                    className={`w-full h-[36px] bg-slate-50 border rounded-lg font-serif text-[14px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-colors px-3.5 ${
-                      newSectionName.replace(/\s+/g, ' ').trim().length > 35
-                        ? 'border-red-500'
-                        : 'border-slate-200 focus:border-[#176BFF]'
-                    }`}
-                  />
-                  {newSectionName.replace(/\s+/g, ' ').trim().length > 35 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Section name cannot exceed 35 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewSectionOpen(false)}
-                    className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCreateSection}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    Create Section
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 5. Search Modal (Replaced with Dedicated Full-Page Search Engine) */}
-
-      {/* Focus-Mode Topic Rename Modal */}
-      <AnimatePresence>
-        {editingTopic && (
-          <div className="fixed inset-0 z-[99999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.1, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs cursor-pointer"
-              onClick={() => setEditingTopicId(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1, transition: { duration: 0.11, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Rename topic</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">Rename your topic to keep your learning tasks organized.</p>
-                </div>
-                <button
-                  onClick={() => setEditingTopicId(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Form Container (div to prevent browser autofill heuristics) */}
-              <div className="flex flex-col">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-900">Topic title</label>
-                    <span className={`text-[11px] font-semibold ${
-                      editingTopicTitle.replace(/\s+/g, ' ').trim().length > 45 ? 'text-red-500 font-bold' : 'text-slate-400'
-                    }`}>
-                      {editingTopicTitle.replace(/\s+/g, ' ').trim().length}/45
-                    </span>
-                  </div>
-                  <input
-                    type="search"
-                    autoComplete="one-time-code"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    aria-autocomplete="none"
-                    data-form-type="other"
-                    data-lpignore="true"
-                    data-1p-ignore="true"
-                    data-bwignore="true"
-                    maxLength={45}
-                    value={editingTopicTitle}
-                    onChange={e => setEditingTopicTitle(e.target.value)}
-                    ref={el => {
-                      if (el && !el.dataset.initSelected) {
-                        el.dataset.initSelected = 'true';
-                        setTimeout(() => el.select(), 20);
-                      }
-                    }}
-                    onClick={e => {
-                      const input = e.currentTarget;
-                      if (input.selectionStart === 0 && input.selectionEnd === input.value.length && input.value.length > 0) {
-                        const len = input.value.length;
-                        input.setSelectionRange(len, len);
-                      }
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleSaveRenameTopic(editingTopic.id, editingTopicTitle);
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setEditingTopicId(null);
-                      }
-                    }}
-                    autoFocus
-                    placeholder="Enter topic name..."
-                    className={`w-full bg-slate-50/70 border rounded-lg text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none transition-all px-3.5 py-2.5 shadow-xs [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden ${
-                      editingTopicTitle.replace(/\s+/g, ' ').trim().length > 45
-                        ? 'border-red-400 focus:border-red-500 ring-2 ring-red-400/20'
-                        : 'border-slate-200/90 focus:border-[#176BFF] focus:ring-3 focus:ring-[#176BFF]/10'
-                    }`}
-                  />
-                  {editingTopicTitle.replace(/\s+/g, ' ').trim().length > 45 && (
-                    <p className="text-[11px] font-medium text-red-500 flex items-center gap-1 mt-0.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Topic name cannot exceed 45 characters (multiple spaces count as 1).
-                    </p>
-                  )}
-                </div>
-                <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setEditingTopicId(null)}
-                    className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveRenameTopic(editingTopic.id, editingTopicTitle)}
-                    className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    Save Topic
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Merge Topic Modal (Higher Z-Index to always appear above Topic Details Drawer) */}
-      <AnimatePresence>
-        {mergeSourceTopic && (
-          <div className="fixed inset-0 z-[99999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.2, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.15, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/50 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setMergeSourceTopic(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.94, y: 6, transition: { duration: 0.15, ease: [0.4, 0, 1, 1] } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/25 border border-slate-200/80 overflow-hidden transform-gpu flex flex-col gap-4"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Merge Topic</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                    Move all tasks, notes & links from “<span className="font-bold text-slate-800">{mergeSourceTopic.title}</span>” into another topic.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setMergeSourceTopic(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Source Topic Stats Info Box */}
-              <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-lg text-xs flex items-center justify-between">
-                <span className="text-blue-900 font-semibold">Tasks to transfer:</span>
-                <span className="font-bold text-[#2563EB] bg-white px-2 py-0.5 rounded-full border border-blue-200 shadow-2xs">
-                  {mergeSourceTopic.tasks.length} task(s)
-                </span>
-              </div>
-
-              {/* Target Topic Selector */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-900">Select Target Topic</label>
-                <select
-                  value={targetTopicIdForMerge}
-                  onChange={e => setTargetTopicIdForMerge(e.target.value)}
-                  className="w-full bg-slate-50/70 border border-slate-200/90 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-[#176BFF] focus:ring-3 focus:ring-[#176BFF]/10 transition-all px-3.5 py-2.5 shadow-xs cursor-pointer"
-                >
-                  <option value="" disabled>-- Select destination topic --</option>
-                  {topics
-                    .filter(t => t.id !== mergeSourceTopic.id && t.section === mergeSourceTopic.section)
-                    .map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.title} ({t.tasks.length} existing tasks)
-                      </option>
-                    ))}
-                </select>
-                {topics.filter(t => t.id !== mergeSourceTopic.id && t.section === mergeSourceTopic.section).length === 0 && (
-                  <p className="text-[11px] font-medium text-amber-600 mt-0.5">
-                    ⚠️ No other topics available in current section ({mergeSourceTopic.section || 'Default'}) to merge into.
-                  </p>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setMergeSourceTopic(null)}
-                  className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!targetTopicIdForMerge}
-                  onClick={handleConfirmMergeTopic}
-                  className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 disabled:opacity-40 rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <CornerUpRight className="w-3.5 h-3.5" />
-                  <span>Merge Topics</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Move Topic to Section Modal (Higher Z-Index to always appear above Topic Details Drawer) */}
-      <AnimatePresence>
-        {moveSectionSourceTopic && (
-          <div className="fixed inset-0 z-[99999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.2, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.15, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/50 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setMoveSectionSourceTopic(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.94, y: 6, transition: { duration: 0.15, ease: [0.4, 0, 1, 1] } }}
-              className="relative z-10 bg-white rounded-xl max-w-[460px] w-full p-6 shadow-2xl shadow-slate-900/25 border border-slate-200/80 overflow-hidden transform-gpu flex flex-col gap-4"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Move Topic to Section</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                    Transfer “<span className="font-bold text-slate-800">{moveSectionSourceTopic.title}</span>” to another section in this workspace.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setMoveSectionSourceTopic(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Current Section Info Box */}
-              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-lg text-xs flex items-center justify-between">
-                <span className="text-slate-600 font-medium">Current section:</span>
-                <span className="font-bold text-slate-900 bg-white px-2.5 py-0.5 rounded-full border border-slate-200 shadow-2xs">
-                  {moveSectionSourceTopic.section || 'Default'}
-                </span>
-              </div>
-
-              {/* Target Section Selector */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-900">Select Target Section</label>
-                <select
-                  value={targetSectionForMove}
-                  onChange={e => setTargetSectionForMove(e.target.value)}
-                  className="w-full bg-slate-50/70 border border-slate-200/90 rounded-lg text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-[#176BFF] focus:ring-3 focus:ring-[#176BFF]/10 transition-all px-3.5 py-2.5 shadow-xs cursor-pointer"
-                >
-                  <option value="" disabled>-- Select destination section --</option>
-                  {currentWorkspaceSections
-                    .filter(s => s.name !== moveSectionSourceTopic.section)
-                    .map(s => (
-                      <option key={s.id} value={s.name}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-                {currentWorkspaceSections.filter(s => s.name !== moveSectionSourceTopic.section).length === 0 && (
-                  <p className="text-[11px] font-medium text-amber-600 mt-0.5">
-                    ⚠️ No other sections available in this workspace. Create a new section first!
-                  </p>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setMoveSectionSourceTopic(null)}
-                  className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!targetSectionForMove}
-                  onClick={handleConfirmMoveTopicToSection}
-                  className="h-[36px] px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-700 disabled:opacity-40 rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <FolderOutput className="w-3.5 h-3.5" />
-                  <span>Move Topic</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Topic Customizer Modal: Custom Icon & Color Picker */}
-      <AnimatePresence>
-        {customizingTopic && (
-          <div className="fixed inset-0 z-[99999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.2, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.15, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/50 backdrop-blur-xs transform-gpu cursor-pointer"
-              onClick={() => setCustomizingTopic(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.95, y: 6, transition: { duration: 0.15, ease: [0.4, 0, 1, 1] } }}
-              className="relative z-10 bg-white rounded-2xl max-w-[500px] w-full p-6 shadow-2xl shadow-slate-900/25 border border-slate-200/80 overflow-hidden transform-gpu flex flex-col gap-4.5"
-            >
-              {/* Modal Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-[#2563EB]" />
-                    <span>Customize Topic Icon & Color</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5 font-normal">
-                    Personalize “<span className="font-semibold text-slate-800">{customizingTopic.title}</span>” with a custom palette and icon.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setCustomizingTopic(null)}
-                  className="p-1.5 -mr-1 -mt-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Live Preview Card */}
-              {(() => {
-                const previewTopic = {
-                  ...customizingTopic,
-                  customColor: customColorSelection || undefined,
-                  customIcon: customIconSelection || undefined
-                };
-                const prevTheme = getTopicTheme(previewTopic);
-                const PrevIcon = prevTheme.icon || BookOpen;
-                return (
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl ${prevTheme.cardIconBg} flex items-center justify-center text-white shadow-xs`}>
-                        <PrevIcon className="w-5 h-5 stroke-[2.2]" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-900 line-clamp-1">{customizingTopic.title}</span>
-                        <span className="text-[11px] font-medium text-slate-400">Live Card Preview</span>
-                      </div>
-                    </div>
-                    <div className={`px-2.5 py-1 rounded-full text-[11px] font-bold text-white ${prevTheme.bg}`}>
-                      Active Theme
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* 1. Color Palette Selector */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-900">Choose Accent Color (7 Highlighted Palettes)</label>
-                <div className="grid grid-cols-7 gap-2">
-                  {[
-                    { id: 'blue', name: 'Royal Blue', color: '#2563EB', bgClass: 'bg-[#2563EB]' },
-                    { id: 'purple', name: 'Purple', color: '#8B5CF6', bgClass: 'bg-[#8B5CF6]' },
-                    { id: 'green', name: 'Emerald', color: '#10B981', bgClass: 'bg-[#10B981]' },
-                    { id: 'orange', name: 'Orange', color: '#EA580C', bgClass: 'bg-[#EA580C]' },
-                    { id: 'pink', name: 'Rose Pink', color: '#F43F5E', bgClass: 'bg-[#F43F5E]' },
-                    { id: 'cyan', name: 'Cyan', color: '#06B6D4', bgClass: 'bg-[#06B6D4]' },
-                    { id: 'amber', name: 'Gold', color: '#F59E0B', bgClass: 'bg-[#F59E0B]' }
-                  ].map(p => {
-                    const isSelected = customColorSelection === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setCustomColorSelection(isSelected ? '' : p.id)}
-                        className={`h-9 rounded-xl ${p.bgClass} flex items-center justify-center text-white transition-all cursor-pointer shadow-xs ${
-                          isSelected ? 'ring-3 ring-offset-2 ring-slate-900 scale-105' : 'hover:opacity-90 hover:scale-102'
-                        }`}
-                        title={p.name}
-                      >
-                        {isSelected && <Check className="w-4 h-4 stroke-[3]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. Popular Icons Selector */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-900">Choose Topic Icon</label>
-                  {customIconSelection && (
-                    <button
-                      type="button"
-                      onClick={() => setCustomIconSelection('')}
-                      className="text-[11px] font-semibold text-blue-600 hover:underline cursor-pointer"
-                    >
-                      Reset to Auto
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-8 sm:grid-cols-10 gap-1.5 max-h-[160px] overflow-y-auto p-1.5 bg-slate-50 border border-slate-200/80 rounded-xl">
-                  {[
-                    // 1. বাংলা ব্যাকরণ & ভাষা
-                    { id: 'languages', comp: Languages, label: 'Languages' },
-                    { id: 'type', comp: Type, label: 'Type' },
-                    { id: 'spellcheck', comp: SpellCheck, label: 'Spell Check' },
-                    { id: 'booka', comp: BookA, label: 'Book A' },
-                    { id: 'notebooktabs', comp: NotebookTabs, label: 'Notebook Tabs' },
-                    { id: 'wholeword', comp: WholeWord, label: 'Whole Word' },
-                    { id: 'textcursor', comp: TextCursor, label: 'Text Cursor' },
-                    { id: 'pilcrow', comp: Pilcrow, label: 'Pilcrow' },
-                    { id: 'casesensitive', comp: CaseSensitive, label: 'Case Sensitive' },
-                    { id: 'brackets', comp: Brackets, label: 'Brackets' },
-                    
-                    // 2. সাহিত্য
-                    { id: 'bookopen', comp: BookOpen, label: 'Book Open' },
-                    { id: 'bookopentext', comp: BookOpenText, label: 'Book Text' },
-                    { id: 'library', comp: Library, label: 'Library' },
-                    { id: 'feather', comp: Feather, label: 'Feather' },
-                    { id: 'pentool', comp: PenTool, label: 'Pen Tool' },
-                    { id: 'scroll', comp: Scroll, label: 'Scroll' },
-                    { id: 'scrolltext', comp: ScrollText, label: 'Scroll Text' },
-                    { id: 'notebook', comp: Notebook, label: 'Notebook' },
-                    { id: 'quote', comp: Quote, label: 'Quote' },
-                    { id: 'bookmarked', comp: BookMarked, label: 'Bookmark' },
-                    { id: 'graduationcap', comp: GraduationCap, label: 'Graduation' },
-                    { id: 'penline', comp: PenLine, label: 'Writing' },
-                    { id: 'bookcopy', comp: BookCopy, label: 'Books' },
-                    { id: 'theater', comp: Theater, label: 'Drama' },
-
-                    // 5. গণিত
-                    { id: 'calculator', comp: Calculator, label: 'Calculator' },
-                    { id: 'sigma', comp: Sigma, label: 'Sigma' },
-                    { id: 'radical', comp: Radical, label: 'Radical' },
-                    { id: 'pi', comp: Pi, label: 'Pi' },
-                    { id: 'percent', comp: Percent, label: 'Percent' },
-                    { id: 'divide', comp: Divide, label: 'Divide' },
-                    { id: 'squarefunction', comp: SquareFunction, label: 'Square Function' },
-                    { id: 'equal', comp: Equal, label: 'Equal' },
-                    { id: 'variable', comp: Variable, label: 'Variable' },
-                    { id: 'binary', comp: Binary, label: 'Binary' },
-                    { id: 'chartnoaxescolumn', comp: ChartNoAxesColumn, label: 'Bar Chart' },
-
-                    // 6. মানসিক দক্ষতা
-                    { id: 'brain', comp: Brain, label: 'Brain' },
-                    { id: 'braincircuit', comp: BrainCircuit, label: 'Brain Circuit' },
-                    { id: 'puzzle', comp: Puzzle, label: 'Puzzle' },
-                    { id: 'lightbulb', comp: Lightbulb, label: 'Idea' },
-                    { id: 'blocks', comp: Blocks, label: 'Blocks' },
-                    { id: 'route', comp: Route, label: 'Route' },
-                    { id: 'network', comp: Network, label: 'Network' },
-                    { id: 'scansearch', comp: ScanSearch, label: 'Scan Search' },
-                    { id: 'workflow', comp: Workflow, label: 'Workflow' },
-                    { id: 'gitbranch', comp: GitBranch, label: 'Git Branch' },
-                    { id: 'shapes', comp: Shapes, label: 'Shapes' },
-                    { id: 'waypoints', comp: Waypoints, label: 'Waypoints' },
-
-                    // 7 & 8. বাংলাদেশ ও আন্তর্জাতিক
-                    { id: 'map', comp: Map, label: 'Map' },
-                    { id: 'mappinned', comp: MapPinned, label: 'Map Pin' },
-                    { id: 'landmark', comp: Landmark, label: 'Landmark' },
-                    { id: 'flag', comp: Flag, label: 'Flag' },
-                    { id: 'building2', comp: Building2, label: 'Building' },
-                    { id: 'scale', comp: Scale, label: 'Scale' },
-                    { id: 'badgecheck', comp: BadgeCheck, label: 'Badge' },
-                    { id: 'globe', comp: Globe, label: 'Globe' },
-                    { id: 'earth', comp: Earth, label: 'Earth' },
-                    { id: 'handshake', comp: Handshake, label: 'Handshake' },
-                    { id: 'plane', comp: Plane, label: 'Plane' },
-                    { id: 'ship', comp: Ship, label: 'Ship' },
-
-                    // 9. বিজ্ঞান
-                    { id: 'atom', comp: Atom, label: 'Atom' },
-                    { id: 'flaskconical', comp: FlaskConical, label: 'Flask' },
-                    { id: 'microscope', comp: Microscope, label: 'Microscope' },
-                    { id: 'telescope', comp: Telescope, label: 'Telescope' },
-                    { id: 'dna', comp: Dna, label: 'DNA' },
-                    { id: 'testtube', comp: TestTube, label: 'Test Tube' },
-                    { id: 'orbit', comp: Orbit, label: 'Orbit' },
-                    { id: 'magnet', comp: Magnet, label: 'Magnet' },
-                    { id: 'zap', comp: Zap, label: 'Electricity' },
-                    { id: 'thermometer', comp: Thermometer, label: 'Thermometer' },
-                    { id: 'radiation', comp: Radiation, label: 'Radiation' },
-
-                    // 10. ICT / Computer
-                    { id: 'monitor', comp: Monitor, label: 'Monitor' },
-                    { id: 'computer', comp: Computer, label: 'Computer' },
-                    { id: 'cpu', comp: Cpu, label: 'CPU' },
-                    { id: 'microchip', comp: Microchip, label: 'Microchip' },
-                    { id: 'database', comp: Database, label: 'Database' },
-                    { id: 'server', comp: Server, label: 'Server' },
-                    { id: 'wifi', comp: Wifi, label: 'Wifi' },
-                    { id: 'code2', comp: Code2, label: 'Code' },
-                    { id: 'terminal', comp: Terminal, label: 'Terminal' },
-                    { id: 'cloud', comp: Cloud, label: 'Cloud' },
-
-                    // 11, 12, 13. ভূগোল, পরিবেশ ও দুর্যোগ
-                    { id: 'mountain', comp: Mountain, label: 'Mountain' },
-                    { id: 'waves', comp: Waves, label: 'Waves' },
-                    { id: 'compass', comp: Compass, label: 'Compass' },
-                    { id: 'navigation', comp: Navigation, label: 'Navigation' },
-                    { id: 'trees', comp: Trees, label: 'Trees' },
-                    { id: 'treepine', comp: TreePine, label: 'Pine Tree' },
-                    { id: 'leaf', comp: Leaf, label: 'Leaf' },
-                    { id: 'sprout', comp: Sprout, label: 'Sprout' },
-                    { id: 'recycle', comp: Recycle, label: 'Recycle' },
-                    { id: 'droplets', comp: Droplets, label: 'Droplets' },
-                    { id: 'wind', comp: Wind, label: 'Wind' },
-                    { id: 'sun', comp: Sun, label: 'Sun' },
-                    { id: 'cloudsun', comp: CloudSun, label: 'Cloud Sun' },
-                    { id: 'flower', comp: Flower, label: 'Flower' },
-                    { id: 'biohazard', comp: Biohazard, label: 'Biohazard' },
-                    { id: 'alerttriangle', comp: AlertTriangle, label: 'Warning' },
-                    { id: 'siren', comp: Siren, label: 'Siren' },
-                    { id: 'shieldalert', comp: ShieldAlert, label: 'Shield Alert' },
-                    { id: 'cloudlightning', comp: CloudLightning, label: 'Lightning' },
-                    { id: 'flame', comp: Flame, label: 'Flame' },
-                    { id: 'lifebuoy', comp: LifeBuoy, label: 'Life Buoy' },
-                    { id: 'ambulance', comp: Ambulance, label: 'Ambulance' },
-                    { id: 'radio', comp: Radio, label: 'Radio' },
-                    { id: 'cross', comp: Cross, label: 'Cross' },
-
-                    // 14, 15, 16. নৈতিকতা, মূল্যবোধ ও সুশাসন
-                    { id: 'hearthandshake', comp: HeartHandshake, label: 'Heart Handshake' },
-                    { id: 'handheart', comp: HandHeart, label: 'Hand Heart' },
-                    { id: 'heart', comp: Heart, label: 'Heart' },
-                    { id: 'smile', comp: Smile, label: 'Smile' },
-                    { id: 'gem', comp: Gem, label: 'Gem' },
-                    { id: 'thumbsup', comp: ThumbsUp, label: 'Thumbs Up' },
-                    { id: 'usercheck', comp: UserCheck, label: 'User Check' },
-                    { id: 'checkcircle2', comp: CheckCircle2, label: 'Check Circle' },
-                    { id: 'star', comp: Star, label: 'Star' },
-                    { id: 'sparkles', comp: Sparkles, label: 'Sparkles' },
-                    { id: 'vote', comp: Vote, label: 'Vote' },
-                    { id: 'filecheck', comp: FileCheck, label: 'File Check' },
-                    { id: 'clipboardcheck', comp: ClipboardCheck, label: 'Clipboard' },
-                    { id: 'gavel', comp: Gavel, label: 'Gavel' },
-                    { id: 'eye', comp: Eye, label: 'Eye' },
-
-                    // 17, 18, 19, 20. Current Affairs, GK, ইতিহাস ও সংবিধান
-                    { id: 'newspaper', comp: Newspaper, label: 'Newspaper' },
-                    { id: 'rss', comp: Rss, label: 'RSS' },
-                    { id: 'megaphone', comp: Megaphone, label: 'Megaphone' },
-                    { id: 'calendardays', comp: CalendarDays, label: 'Calendar' },
-                    { id: 'clock', comp: Clock, label: 'Clock' },
-                    { id: 'bell', comp: Bell, label: 'Bell' },
-                    { id: 'trendingup', comp: TrendingUp, label: 'Trending' },
-                    { id: 'tv', comp: Tv, label: 'TV' },
-                    { id: 'podcast', comp: Podcast, label: 'Podcast' },
-                    { id: 'circlehelp', comp: CircleHelp, label: 'Help' },
-                    { id: 'trophy', comp: Trophy, label: 'Trophy' },
-                    { id: 'castle', comp: Castle, label: 'Castle' },
-                    { id: 'crown', comp: Crown, label: 'Crown' },
-                    { id: 'swords', comp: Swords, label: 'Swords' },
-                    { id: 'hourglass', comp: Hourglass, label: 'Hourglass' },
-                    { id: 'history', comp: History, label: 'History' },
-                    { id: 'bookcheck', comp: BookCheck, label: 'Book Check' },
-
-                    // 21, 22, 23. অর্থনীতি, ব্যাংকিং ও কৃষি
-                    { id: 'banknote', comp: Banknote, label: 'Banknote' },
-                    { id: 'creditcard', comp: CreditCard, label: 'Credit Card' },
-                    { id: 'walletcards', comp: WalletCards, label: 'Wallet Cards' },
-                    { id: 'receipt', comp: Receipt, label: 'Receipt' },
-                    { id: 'chartnoaxescombined', comp: ChartNoAxesCombined, label: 'Chart' },
-                    { id: 'piggybank', comp: PiggyBank, label: 'Piggy Bank' },
-                    { id: 'vault', comp: Vault, label: 'Vault' },
-                    { id: 'badgedollarsign', comp: BadgeDollarSign, label: 'Dollar Badge' },
-                    { id: 'wallet', comp: Wallet, label: 'Wallet' },
-                    { id: 'coins', comp: Coins, label: 'Coins' },
-                    { id: 'circledollarsign', comp: CircleDollarSign, label: 'Dollar' },
-                    { id: 'handcoins', comp: HandCoins, label: 'Hand Coins' },
-                    { id: 'wheat', comp: Wheat, label: 'Wheat' },
-                    { id: 'tractor', comp: Tractor, label: 'Tractor' },
-                    { id: 'shovel', comp: Shovel, label: 'Shovel' },
-                    { id: 'apple', comp: Apple, label: 'Apple' },
-                    { id: 'warehouse', comp: Warehouse, label: 'Warehouse' },
-
-                    // 24, 25. মুক্তিযুদ্ধ ও খেলাধুলা
-                    { id: 'medal', comp: Medal, label: 'Medal' },
-                    { id: 'award', comp: Award, label: 'Award' },
-                    { id: 'shield', comp: Shield, label: 'Shield' },
-                    { id: 'dumbbell', comp: Dumbbell, label: 'Dumbbell' },
-                    { id: 'volleyball', comp: Volleyball, label: 'Volleyball' },
-                    { id: 'bike', comp: Bike, label: 'Bike' },
-                    { id: 'goal', comp: Goal, label: 'Goal' },
-                    { id: 'timer', comp: Timer, label: 'Timer' },
-                    { id: 'flagtriangleright', comp: FlagTriangleRight, label: 'Flag Triangle' },
-                    { id: 'target', comp: Target, label: 'Target' }
-                  ].map(ic => {
-                    const Comp = ic.comp;
-                    const isSelected = customIconSelection === ic.id;
-                    return (
-                      <button
-                        key={ic.id}
-                        type="button"
-                        onClick={() => setCustomIconSelection(isSelected ? '' : ic.id)}
-                        className={`h-8 w-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#2563EB] text-white shadow-xs scale-105'
-                            : 'bg-white border border-slate-200/80 text-slate-700 hover:bg-slate-100'
-                        }`}
-                        title={ic.label}
-                      >
-                        <Comp className="w-4 h-4 stroke-[2]" />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomColorSelection('');
-                    setCustomIconSelection('');
-                  }}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reset all</span>
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCustomizingTopic(null)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!customizingTopic) return;
-                      const updated = {
-                        ...customizingTopic,
-                        customColor: customColorSelection || undefined,
-                        customIcon: customIconSelection || undefined
-                      };
-                      setTopics(prev => prev.map(t => t.id === updated.id ? updated : t));
-                      setCustomizingTopic(null);
-                      showToast(`Updated custom style for "${customizingTopic.title}"!`);
-                    }}
-                    className="px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1742BF] rounded-lg shadow-sm shadow-blue-500/25 active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Apply</span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Move Task to Recycle Bin Confirmation Modal */}
-      <AnimatePresence>
-        {taskToDelete && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.1, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-xs cursor-pointer"
-              onClick={() => setTaskToDelete(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1, transition: { duration: 0.11, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-xl max-w-[420px] w-full p-6 shadow-2xl shadow-slate-900/15 border border-slate-200/80 flex flex-col items-center text-center overflow-hidden"
-            >
-              {/* Close Button */}
-              <button
-                onClick={() => setTaskToDelete(null)}
-                className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              {/* Warning Icon */}
-              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4 shrink-0">
-                <AlertTriangle className="w-6 h-6 stroke-[2.2]" />
-              </div>
-
-              {/* Modal Header */}
-              <h3 className="text-base font-bold text-slate-900">
-                Move task to Recycle Bin?
-              </h3>
-
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[340px]">
-                “<span className="font-semibold text-slate-800">{taskToDelete.task.title}</span>” will be moved to the Recycle Bin. You can undo this action immediately.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-6">
-                <button
-                  autoFocus
-                  type="button"
-                  onClick={() => setTaskToDelete(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMoveTaskToRecycleBin}
-                  className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                >
-                  Move to Recycle Bin
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Move to Recycle Bin Confirmation Modal (Topic - Higher Z-Index) */}
-      <AnimatePresence>
-        {topicToDelete && (
-          <div className="fixed inset-0 z-[99999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.1, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/50 backdrop-blur-xs cursor-pointer"
-              onClick={() => setTopicToDelete(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.14, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-2xl max-w-[440px] w-full pt-4 px-6 pb-5 shadow-2xl shadow-slate-900/20 border border-slate-200/90 flex flex-col items-center text-center overflow-hidden"
-            >
-              {/* Playful Premium Trash Can Illustration */}
-              <div className="relative mb-2 -mt-1 flex items-center justify-center select-none pointer-events-none">
-                <svg
-                  width="128"
-                  height="94"
-                  viewBox="0 0 140 102"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="overflow-visible"
-                >
-                  {/* Soft Ground Shadow */}
-                  <ellipse cx="70" cy="94" rx="46" ry="4" fill="#FFE2E7" />
-
-                  {/* Floating Sparkles & Dots */}
-                  {/* Top Right Cross */}
-                  <path d="M102 16V24M98 20H106" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Middle Left Cross */}
-                  <path d="M35 38V46M31 42H39" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Lower Left Cross */}
-                  <path d="M22 71V79M18 75H26" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Top Center Dot */}
-                  <circle cx="65" cy="18" r="2.4" fill="#E11D48" />
-                  {/* Middle Right Ring */}
-                  <circle cx="108" cy="69" r="3.2" stroke="#E11D48" strokeWidth="2" fill="none" />
-                  {/* Lower Right Dot */}
-                  <circle cx="98" cy="90" r="2.4" fill="#E11D48" />
-
-                  {/* Tilted Lid with Handle (Rotated -8.5deg around center) */}
-                  <g transform="rotate(-8.5 70 34)">
-                    {/* Handle */}
-                    <path
-                      d="M62 20C62 17.2 64.2 15 67 15H73C75.8 15 78 17.2 78 20V26H62V20Z"
-                      fill="#E11D48"
-                    />
-                    <path
-                      d="M65.5 20.5C65.5 19.5 66.2 18.5 67.5 18.5H72.5C73.8 18.5 74.5 19.5 74.5 20.5V26H65.5V20.5Z"
-                      fill="white"
-                    />
-                    {/* Lid Main Bar */}
-                    <rect x="46" y="25" width="48" height="11" rx="5.5" fill="#E11D48" />
-                  </g>
-
-                  {/* Bin Bucket Body */}
-                  <path
-                    d="M49 41.5H91L87 78.5C86.6 82.5 83.2 85.5 79.2 85.5H60.8C56.8 85.5 53.4 82.5 53 78.5L49 41.5Z"
-                    fill="#E11D48"
-                  />
-
-                  {/* 3 White Slats on Bin */}
-                  <rect x="56.5" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="67.75" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="79" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                </svg>
-              </div>
-
-              {/* Modal Header */}
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Move Topic to Recycle Bin?
-              </h3>
-
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[360px]">
-                Are you sure? Topic “<span className="font-semibold text-slate-800">{topicToDelete.title}</span>” and its {topicToDelete.tasks?.length || 0} {topicToDelete.tasks?.length === 1 ? 'task' : 'tasks'} will be moved to the Recycle Bin.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-5">
-                <button
-                  autoFocus
-                  type="button"
-                  onClick={() => setTopicToDelete(null)}
-                  className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMoveToRecycleBin}
-                  className="h-[36px] px-4 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-[0.98] rounded-lg shadow-xs shadow-rose-600/20 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                  <span>Move to Recycle Bin</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Workspace Move to Recycle Bin Confirmation Modal */}
-      <AnimatePresence>
-        {workspaceToDelete && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.12, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/45 backdrop-blur-xs cursor-pointer"
-              onClick={() => setWorkspaceToDelete(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.14, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-2xl max-w-[440px] w-full pt-4 px-6 pb-5 shadow-2xl shadow-slate-900/20 border border-slate-200/90 flex flex-col items-center text-center overflow-hidden"
-            >
-              {/* Playful Premium Trash Can Illustration */}
-              <div className="relative mb-2 -mt-1 flex items-center justify-center select-none pointer-events-none">
-                <svg
-                  width="128"
-                  height="94"
-                  viewBox="0 0 140 102"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="overflow-visible"
-                >
-                  {/* Soft Ground Shadow */}
-                  <ellipse cx="70" cy="94" rx="46" ry="4" fill="#FFE2E7" />
-
-                  {/* Floating Sparkles & Dots */}
-                  {/* Top Right Cross */}
-                  <path d="M102 16V24M98 20H106" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Middle Left Cross */}
-                  <path d="M35 38V46M31 42H39" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Lower Left Cross */}
-                  <path d="M22 71V79M18 75H26" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Top Center Dot */}
-                  <circle cx="65" cy="18" r="2.4" fill="#E11D48" />
-                  {/* Middle Right Ring */}
-                  <circle cx="108" cy="69" r="3.2" stroke="#E11D48" strokeWidth="2" fill="none" />
-                  {/* Lower Right Dot */}
-                  <circle cx="98" cy="90" r="2.4" fill="#E11D48" />
-
-                  {/* Tilted Lid with Handle (Rotated -8.5deg around center) */}
-                  <g transform="rotate(-8.5 70 34)">
-                    {/* Handle */}
-                    <path
-                      d="M62 20C62 17.2 64.2 15 67 15H73C75.8 15 78 17.2 78 20V26H62V20Z"
-                      fill="#E11D48"
-                    />
-                    <path
-                      d="M65.5 20.5C65.5 19.5 66.2 18.5 67.5 18.5H72.5C73.8 18.5 74.5 19.5 74.5 20.5V26H65.5V20.5Z"
-                      fill="white"
-                    />
-                    {/* Lid Main Bar */}
-                    <rect x="46" y="25" width="48" height="11" rx="5.5" fill="#E11D48" />
-                  </g>
-
-                  {/* Bin Bucket Body */}
-                  <path
-                    d="M49 41.5H91L87 78.5C86.6 82.5 83.2 85.5 79.2 85.5H60.8C56.8 85.5 53.4 82.5 53 78.5L49 41.5Z"
-                    fill="#E11D48"
-                  />
-
-                  {/* 3 White Slats on Bin */}
-                  <rect x="56.5" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="67.75" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="79" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                </svg>
-              </div>
-
-              {/* Modal Header */}
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Move workspace to Recycle Bin?
-              </h3>
-
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[360px]">
-                Are you sure? Workspace “<span className="font-semibold text-slate-800">{workspaceToDelete.name}</span>” and all of its contents will be moved to the Recycle Bin.
-              </p>
-
-              {/* Workspace Details Card */}
-              {(() => {
-                const wsTopics = topics.filter(t => t.workspaceId === workspaceToDelete.id);
-                const totalTasks = wsTopics.reduce((acc, t) => acc + (t.tasks ? t.tasks.length : 0), 0);
-                const completedTasks = wsTopics.reduce((acc, t) => acc + (t.tasks ? t.tasks.filter(tk => tk.completed).length : 0), 0);
-                const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-                return (
-                  <div className="w-full mt-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 p-3">
-                    <div className="grid grid-cols-3 divide-x divide-slate-200/80 text-center">
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Topics</span>
-                        <span className="text-sm font-bold text-slate-800 mt-0.5">{wsTopics.length}</span>
-                      </div>
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Tasks</span>
-                        <span className="text-sm font-bold text-slate-800 mt-0.5">{totalTasks}</span>
-                      </div>
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Progress</span>
-                        <span className="text-sm font-bold text-[#176BFF] mt-0.5">{progressPct}%</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-4.5">
-                <button
-                  autoFocus
-                  type="button"
-                  onClick={() => setWorkspaceToDelete(null)}
-                  className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMoveWorkspaceToRecycleBin}
-                  className="h-[36px] px-4 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-[0.98] rounded-lg shadow-xs shadow-rose-600/20 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                  <span>Move to Recycle Bin</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Section Move to Recycle Bin Confirmation Modal */}
-      <AnimatePresence>
-        {sectionToDelete && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { duration: 0.12, ease: 'easeOut' } }}
-              exit={{ opacity: 0, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="fixed inset-0 bg-[#0F172A]/45 backdrop-blur-xs cursor-pointer"
-              onClick={() => setSectionToDelete(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.14, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, scale: 0.96, y: 4, transition: { duration: 0.08, ease: 'easeIn' } }}
-              className="relative z-10 bg-white rounded-2xl max-w-[440px] w-full pt-4 px-6 pb-5 shadow-2xl shadow-slate-900/20 border border-slate-200/90 flex flex-col items-center text-center overflow-hidden"
-            >
-              {/* Playful Premium Trash Can Illustration */}
-              <div className="relative mb-2 -mt-1 flex items-center justify-center select-none pointer-events-none">
-                <svg
-                  width="128"
-                  height="94"
-                  viewBox="0 0 140 102"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="overflow-visible"
-                >
-                  {/* Soft Ground Shadow */}
-                  <ellipse cx="70" cy="94" rx="46" ry="4" fill="#FFE2E7" />
-
-                  {/* Floating Sparkles & Dots */}
-                  {/* Top Right Cross */}
-                  <path d="M102 16V24M98 20H106" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Middle Left Cross */}
-                  <path d="M35 38V46M31 42H39" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Lower Left Cross */}
-                  <path d="M22 71V79M18 75H26" stroke="#E11D48" strokeWidth="2.4" strokeLinecap="round" />
-                  {/* Top Center Dot */}
-                  <circle cx="65" cy="18" r="2.4" fill="#E11D48" />
-                  {/* Middle Right Ring */}
-                  <circle cx="108" cy="69" r="3.2" stroke="#E11D48" strokeWidth="2" fill="none" />
-                  {/* Lower Right Dot */}
-                  <circle cx="98" cy="90" r="2.4" fill="#E11D48" />
-
-                  {/* Tilted Lid with Handle (Rotated -8.5deg around center) */}
-                  <g transform="rotate(-8.5 70 34)">
-                    {/* Handle */}
-                    <path
-                      d="M62 20C62 17.2 64.2 15 67 15H73C75.8 15 78 17.2 78 20V26H62V20Z"
-                      fill="#E11D48"
-                    />
-                    <path
-                      d="M65.5 20.5C65.5 19.5 66.2 18.5 67.5 18.5H72.5C73.8 18.5 74.5 19.5 74.5 20.5V26H65.5V20.5Z"
-                      fill="white"
-                    />
-                    {/* Lid Main Bar */}
-                    <rect x="46" y="25" width="48" height="11" rx="5.5" fill="#E11D48" />
-                  </g>
-
-                  {/* Bin Bucket Body */}
-                  <path
-                    d="M49 41.5H91L87 78.5C86.6 82.5 83.2 85.5 79.2 85.5H60.8C56.8 85.5 53.4 82.5 53 78.5L49 41.5Z"
-                    fill="#E11D48"
-                  />
-
-                  {/* 3 White Slats on Bin */}
-                  <rect x="56.5" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="67.75" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                  <rect x="79" y="47.5" width="4.5" height="28" rx="2.25" fill="white" />
-                </svg>
-              </div>
-
-              {/* Modal Header */}
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Move section to Recycle Bin?
-              </h3>
-
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-[360px]">
-                Are you sure? Section “<span className="font-semibold text-slate-800">{sectionToDelete}</span>” and all of its topics will be moved to the Recycle Bin.
-              </p>
-
-              {/* Section Details Card */}
-              {(() => {
-                const secTopics = topics.filter(t => t.workspaceId === activeWorkspaceId && t.section === sectionToDelete);
-                const totalTasks = secTopics.reduce((acc, t) => acc + (t.tasks ? t.tasks.length : 0), 0);
-                const completedTasks = secTopics.reduce((acc, t) => acc + (t.tasks ? t.tasks.filter(tk => tk.completed).length : 0), 0);
-                const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-                return (
-                  <div className="w-full mt-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 p-3">
-                    <div className="grid grid-cols-3 divide-x divide-slate-200/80 text-center">
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Topics</span>
-                        <span className="text-sm font-bold text-slate-800 mt-0.5">{secTopics.length}</span>
-                      </div>
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Tasks</span>
-                        <span className="text-sm font-bold text-slate-800 mt-0.5">{totalTasks}</span>
-                      </div>
-                      <div className="flex flex-col px-2">
-                        <span className="text-[10.5px] font-medium text-slate-400 uppercase tracking-wider">Progress</span>
-                        <span className="text-sm font-bold text-[#176BFF] mt-0.5">{progressPct}%</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Action Buttons */}
-              <div className="w-full flex items-center justify-end gap-2.5 mt-4.5">
-                <button
-                  autoFocus
-                  type="button"
-                  onClick={() => setSectionToDelete(null)}
-                  className="h-[36px] px-4 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (sectionToDelete) {
-                      const sec = sectionToDelete;
-                      setSectionToDelete(null);
-                      handleDeleteSection(sec);
-                    }
-                  }}
-                  className="h-[36px] px-4 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-[0.98] rounded-lg shadow-xs shadow-rose-600/20 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                  <span>Move to Recycle Bin</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-
       {/* Topic Details Right Sidebar Drawer (Opens on clicking topic in Card/Banner view or Global Search deep link) */}
       {selectedTopicId && isDetailsDrawerOpen && (
         <TopicDetailsDrawer
@@ -11839,7 +6534,7 @@ export function App() {
           navigationTarget={drawerNavigationTarget}
           onClose={() => {
             setIsDetailsDrawerOpen(false);
-            setSyncedTopics(topics);
+            setSelectedTopicId(null);
           }}
           onTogglePin={(topicId) => togglePinTopic(topicId)}
           onToggleTask={(topicId, taskId) => toggleTaskCompleted(topicId, taskId)}
@@ -11904,19 +6599,16 @@ export function App() {
             setIsDetailsDrawerOpen(true);
           }}
           focusCheckIntervalMinutes={userSettings.focusCheckIntervalMinutes || 20}
-          focusCheckIntervalEnabled={userSettings.focusCheckIntervalEnabled !== false}
-          onSoftDeleteNoteItem={handleSoftDeleteDrawerNote}
-          onSoftDeleteLinkItem={handleSoftDeleteDrawerLink}
         />
       )}
 
-      {/* Global Floating Study Timer Widget (Active when drawer is closed or user navigates to another task/tab) */}
+      {/* --- GLOBAL FLOATING STUDY TIMER WIDGET --- */}
       <FloatingStudyTimer
         session={activeStudyTimer}
-        isVisible={isFloatingTimerVisible}
+        isVisible={Boolean(activeStudyTimer && !drawerActiveTaskState?.isTimeMenuOpen)}
         onPause={handlePauseGlobalStudyTimer}
         onResume={handleResumeGlobalStudyTimer}
-        onStopAndLog={() => handleStopAndLogGlobalStudyTimer()}
+        onStopAndLog={handleStopAndLogGlobalStudyTimer}
         onOpenDrawer={() => {
           if (activeStudyTimer) {
             if (activeStudyTimer.workspaceId && activeStudyTimer.workspaceId !== activeWorkspaceId) {
@@ -11929,192 +6621,115 @@ export function App() {
         }}
       />
 
-      {/* Global Still Studying Presence Check Modal (Universally rendered across app and drawers) */}
-      <AnimatePresence>
-        {isGlobalStillStudyingOpen && activeStudyTimer && (
-          <div className="fixed inset-0 z-[999999999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="fixed inset-0 bg-[#0F172A]/50 backdrop-blur-xs"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="relative z-10 bg-white dark:bg-slate-900 rounded-3xl max-w-[380px] w-full p-6 shadow-2xl shadow-slate-900/25 border border-slate-200/90 dark:border-slate-800 flex flex-col items-center text-center overflow-hidden"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-[#176BFF] border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-center mb-3.5 shrink-0 shadow-sm animate-bounce" style={{ animationDuration: '2s' }}>
-                <Bell className="w-7 h-7 stroke-[2.3]" />
-              </div>
-
-              <h3 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
-                Still Studying? 📖
-              </h3>
-
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed max-w-[310px]">
-                You reached your <b>{(userSettings.focusCheckIntervalMinutes || 20) === 0.5 ? '30-second' : `${userSettings.focusCheckIntervalMinutes || 20}-minute`}</b> focus milestone for “<span className="font-semibold text-slate-800 dark:text-slate-200">{activeStudyTimer.taskTitle || 'this task'}</span>”!
-              </p>
-
-              <div className="w-full flex flex-col gap-2 mt-6">
-                <button
-                  autoFocus
-                  type="button"
-                  onClick={handleResumeGlobalStudyTimer}
-                  className="w-full py-2.5 px-4 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-600 rounded-xl shadow-md shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" /> Yes, Keep Studying!
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleStopAndLogGlobalStudyTimer()}
-                  className="w-full py-2.5 px-4 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
-                >
-                  Take a Break & Save
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {isSettingsOpen && (
-          <SettingsModal
-            key={`settings-modal-${userSettings.primaryColor || 'blue'}-${userSettings.theme || 'light'}`}
-            settings={userSettings}
-            onSaveSettings={handleSaveSettings}
-            onClose={() => setIsSettingsOpen(false)}
-            onExportJSON={handleExportJSON}
-            onImportTrigger={() => fileInputRef.current?.click()}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Firebase Auth Modal (Sign In / Sign Up / Forgot Password) */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={() => {
-          setToastData({ message: 'Welcome! Successfully logged in.' });
-        }}
-      />
-
-      {/* Edit Profile Modal (Name & Display Info) */}
-      <EditProfileModal
-        isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
+      {/* --- MODALS PORTAL HUB --- */}
+      <GlobalModalsHub
+        isShortcutsOpen={isShortcutsOpen}
+        setIsShortcutsOpen={setIsShortcutsOpen}
+        isNewWorkspaceOpen={isNewWorkspaceOpen}
+        setIsNewWorkspaceOpen={setIsNewWorkspaceOpen}
+        newWorkspaceName={newWorkspaceName}
+        setNewWorkspaceName={setNewWorkspaceName}
+        handleCreateWorkspace={handleCreateWorkspace}
+        editingWorkspaceId={editingWorkspaceId}
+        setEditingWorkspaceId={setEditingWorkspaceId}
+        editingWorkspaceName={editingWorkspaceName}
+        setEditingWorkspaceName={setEditingWorkspaceName}
+        handleSaveRenameWorkspace={handleSaveRenameWorkspace}
+        workspaceToDelete={workspaceToDelete}
+        setWorkspaceToDelete={setWorkspaceToDelete}
+        handleConfirmMoveWorkspaceToRecycleBin={handleConfirmMoveWorkspaceToRecycleBin}
+        isNewSectionOpen={isNewSectionOpen}
+        setIsNewSectionOpen={setIsNewSectionOpen}
+        newSectionName={newSectionName}
+        setNewSectionName={setNewSectionName}
+        handleCreateSection={handleCreateSection}
+        editingSection={editingSection}
+        setEditingSection={setEditingSection}
+        editingSectionName={editingSectionName}
+        setEditingSectionName={setEditingSectionName}
+        handleSaveRenameSection={handleSaveRenameSection}
+        sectionToDelete={sectionToDelete}
+        setSectionToDelete={setSectionToDelete}
+        handleDeleteSection={handleDeleteSection}
+        isNewTopicOpen={isNewTopicOpen}
+        setIsNewTopicOpen={setIsNewTopicOpen}
+        newTopicTitle={newTopicTitle}
+        setNewTopicTitle={setNewTopicTitle}
+        handleCreateTopicModal={handleCreateTopicModal}
+        isSmartStudioOpen={isSmartStudioOpen}
+        setIsSmartStudioOpen={setIsSmartStudioOpen}
+        smartStudioInitialMode={smartStudioInitialMode}
+        handleCreateTopicsFromStudio={handleCreateTopicsFromStudio}
+        currentWorkspaceSections={currentWorkspaceSections}
+        activeSection={activeSection}
+        editingTopicId={editingTopicId}
+        setEditingTopicId={setEditingTopicId}
+        editingTopicTitle={editingTopicTitle}
+        setEditingTopicTitle={setEditingTopicTitle}
+        handleSaveRenameTopic={handleSaveRenameTopic}
+        mergeSourceTopic={mergeSourceTopic}
+        setMergeSourceTopic={setMergeSourceTopic}
+        targetTopicIdForMerge={targetTopicIdForMerge}
+        setTargetTopicIdForMerge={setTargetTopicIdForMerge}
+        handleConfirmMergeTopic={handleConfirmMergeTopic}
+        moveSectionSourceTopic={moveSectionSourceTopic}
+        setMoveSectionSourceTopic={setMoveSectionSourceTopic}
+        targetSectionForMove={targetSectionForMove}
+        setTargetSectionForMove={setTargetSectionForMove}
+        handleConfirmMoveTopicToSection={handleConfirmMoveTopicToSection}
+        customizingTopic={customizingTopic}
+        setCustomizingTopic={setCustomizingTopic}
+        customColorSelection={customColorSelection}
+        setCustomColorSelection={setCustomColorSelection}
+        customIconSelection={customIconSelection}
+        setCustomIconSelection={setCustomIconSelection}
+        setTopics={setTopics}
+        getTopicTheme={getTopicTheme}
+        showToast={showToast}
+        topicToDelete={topicToDelete}
+        setTopicToDelete={setTopicToDelete}
+        handleConfirmMoveToRecycleBin={handleConfirmMoveToRecycleBin}
+        taskToDelete={taskToDelete}
+        setTaskToDelete={setTaskToDelete}
+        handleConfirmMoveTaskToRecycleBin={handleConfirmMoveTaskToRecycleBin}
+        isGlobalStillStudyingOpen={isGlobalStillStudyingOpen}
+        activeStudyTimer={activeStudyTimer}
+        handleResumeGlobalStudyTimer={handleResumeGlobalStudyTimer}
+        handleStopAndLogGlobalStudyTimer={handleStopAndLogGlobalStudyTimer}
+        isSettingsOpen={isSettingsOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
+        userSettings={userSettings}
+        handleSaveSettings={handleSaveSettings}
+        handleExportJSON={handleExportJSON}
+        fileInputRef={fileInputRef}
+        isAuthModalOpen={isAuthModalOpen}
+        setIsAuthModalOpen={setIsAuthModalOpen}
+        isEditProfileOpen={isEditProfileOpen}
+        setIsEditProfileOpen={setIsEditProfileOpen}
+        isChangePasswordOpen={isChangePasswordOpen}
+        setIsChangePasswordOpen={setIsChangePasswordOpen}
         currentUser={currentUser}
-        onProfileUpdated={(newName) => {
-          setToastData({ message: 'Display name updated successfully! ✨' });
-          if (auth.currentUser) {
-            setCurrentUser({ ...auth.currentUser, displayName: newName });
-          }
-        }}
-      />
-
-      {/* Direct In-App Change Password Modal */}
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-        userEmail={currentUser?.email}
-        onSuccess={() => {
-          setToastData({ message: 'Password updated successfully! 🔒' });
-        }}
-      />
-
-      {/* Professional Bottom Right Screen Toast Notification (Highest z-index, always front, swipe to dismiss) */}
-      <AnimatePresence>
-        {toastData && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.7}
-            onDragEnd={(_, info) => {
-              if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
-                setToastData(null);
-              }
-            }}
-            whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
-            className={`fixed ${isFloatingTimerVisible ? 'bottom-20 sm:bottom-22' : 'bottom-6'} right-4 sm:right-6 z-[999999999] pointer-events-auto select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] transition-all duration-200 cursor-grab active:cursor-grabbing touch-pan-y`}
-          >
-            <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 text-xs font-semibold tracking-tight min-w-[280px]">
-              <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
-                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-              </div>
-              <span className="flex-1 text-slate-100 leading-snug">{toastData.message}</span>
-              {toastData.undoAction && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    toastData.undoAction?.();
-                    setToastData(null);
-                  }}
-                  className="px-2.5 py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors cursor-pointer shrink-0 shadow-xs"
-                >
-                  Undo
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setToastData(null)}
-                className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Celebratory Center Screen Topic 100% Complete Milestone Dialog */}
-      <AnimatePresence>
-        {congratulationsTopic && (
-          <TopicCelebrationModal
-            topic={congratulationsTopic}
-            dailyGoal={{
-              completed: completedTopicsCount,
-              target: userSettings.dailyTarget || 10,
-            }}
-            nextTopic={nextIncompleteTopic}
-            onStartNextTopic={(nextTopicId) => {
-              setCongratulationsTopic(null);
-              setSelectedTopicId(nextTopicId);
-              setIsDetailsDrawerOpen(true);
-              setTimeout(() => {
-                const el = document.getElementById(nextTopicId);
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }, 150);
-            }}
-            onClose={() => setCongratulationsTopic(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Global Today's Goal 100% Achieved Celebration Modal */}
-      <GoalCelebrationModal
-        isOpen={isGoalCelebrationOpen}
-        onClose={() => setIsGoalCelebrationOpen(false)}
-        mode={dailyGoalMode}
-        completedAmount={currentGoalValue}
-        targetAmount={targetGoalValue}
-        streakDays={streakData.currentStreak}
-        workspaceCount={workspacesStats.filter(w => w.completedTasksCount > 0 || w.timeSpentMinutes > 0).length || workspaces.length}
-        soundEnabled={userSettings.soundEffects !== false}
-        confettiEnabled={userSettings.confettiCelebration !== false}
-        isMilestone={latestMilestoneInfo.isMilestone}
-        milestoneTitle={latestMilestoneInfo.title}
-        milestoneIcon={latestMilestoneInfo.icon}
+        setCurrentUser={setCurrentUser}
+        setToastData={setToastData}
+        congratulationsTopic={congratulationsTopic}
+        setCongratulationsTopic={setCongratulationsTopic}
+        completedTopicsCount={completedTopicsCount}
+        nextIncompleteTopic={nextIncompleteTopic}
+        setSelectedTopicId={setSelectedTopicId}
+        setIsDetailsDrawerOpen={setIsDetailsDrawerOpen}
+        isGoalCelebrationOpen={isGoalCelebrationOpen}
+        setIsGoalCelebrationOpen={setIsGoalCelebrationOpen}
+        dailyGoalMode={dailyGoalMode}
+        currentGoalValue={currentGoalValue}
+        targetGoalValue={targetGoalValue}
+        streakData={streakData}
+        workspacesStats={workspacesStats}
+        workspaces={workspaces}
+        latestMilestoneInfo={latestMilestoneInfo}
+        mobileKeyboardBottomInset={mobileKeyboardBottomInset}
+        topics={topics}
+        displayTopics={displayTopics}
+        activeWorkspaceId={activeWorkspaceId}
       />
 
       {/* Fixed 3-Dot Dropdown Menu for Workspace - Always on Top */}
@@ -12233,6 +6848,69 @@ export function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* --- GLOBAL APP TOAST NOTIFICATIONS STACK --- */}
+      <div
+        className={`fixed ${
+          Boolean(activeStudyTimer && !drawerActiveTaskState?.isTimeMenuOpen)
+            ? 'bottom-[86px] sm:bottom-[90px]'
+            : 'bottom-6'
+        } right-4 sm:right-6 z-[999999999] pointer-events-none select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] transition-[bottom] duration-300 ease-out flex flex-col items-end gap-2`}
+      >
+        <AnimatePresence mode="popLayout">
+          {toasts.map((toast) => (
+            <motion.div
+              layout
+              key={toast.id}
+              initial={{ opacity: 0, y: 28, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -16, scale: 0.92, transition: { duration: 0.2 } }}
+              transition={{
+                layout: { type: 'spring', stiffness: 380, damping: 28, mass: 0.8 },
+                opacity: { duration: 0.2 },
+                y: { type: 'spring', stiffness: 380, damping: 28 },
+                scale: { duration: 0.2 },
+              }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.7}
+              onDragEnd={(_, info) => {
+                if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
+                  setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                }
+              }}
+              whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
+              className="pointer-events-auto cursor-grab active:cursor-grabbing touch-pan-y w-full flex justify-end"
+            >
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 dark:bg-[#0B0F19]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 dark:border-slate-800/80 text-xs font-semibold tracking-tight min-w-[280px] max-w-full">
+                <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <span className="flex-1 text-slate-100 leading-snug">{toast.message}</span>
+                {toast.undoAction && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.undoAction?.();
+                      setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                    }}
+                    className="px-3 py-1 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-600 active:scale-95 rounded-lg shadow-sm shadow-blue-500/25 transition-all cursor-pointer shrink-0"
+                  >
+                    Undo
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                  className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

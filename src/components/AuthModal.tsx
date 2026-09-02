@@ -24,7 +24,7 @@ import {
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (user?: any) => void;
   isClosable?: boolean;
 }
 
@@ -49,7 +49,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       return 'Incorrect email or password. Please try again.';
     }
     if (err.includes('auth/email-already-in-use')) {
-      return 'An account already exists with this email. Please sign in instead.';
+      return 'This email address is already registered. Please sign in instead.';
     }
     if (err.includes('auth/weak-password')) {
       return 'Password should be at least 6 characters long.';
@@ -58,7 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       return 'Please enter a valid email address.';
     }
     if (err.includes('auth/popup-closed-by-user')) {
-      return 'Google sign-in was cancelled (popup was closed).';
+      return 'Sign-in cancelled. Please try again.';
     }
     if (err.includes('auth/popup-blocked')) {
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'this site';
@@ -72,9 +72,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       return 'Google Sign-In is not enabled in Firebase Console > Authentication > Sign-in method.';
     }
     if (err.includes('auth/network-request-failed')) {
-      return 'Network error. Please check your internet connection.';
+      return 'Network connection error. Please check your internet.';
     }
-    return err.replace('Firebase: ', '').replace(/\(auth\/.*?\)\.?/, '').trim() || 'An error occurred. Please try again.';
+    return err.replace(/^Firebase:\s*/, '').replace(/\(auth\/[^)]+\)\.?/, '').trim() || 'Authentication failed. Please try again.';
   };
 
   const handleGoogleSignIn = async () => {
@@ -87,11 +87,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         console.error('Google Sign-In Error:', error);
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        setSuccessMessage('Successfully signed in with Google!');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose();
-        }, 600);
+        onSuccess?.(user);
+        onClose();
       }
     } catch (err: any) {
       console.error('Google Sign-In Exception:', err);
@@ -143,11 +140,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       if (error) {
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        setSuccessMessage('Account created successfully! Welcome to Study Flow.');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose();
-        }, 600);
+        onSuccess?.(user);
+        onClose();
       }
       return;
     }
@@ -165,11 +159,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       if (error) {
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        setSuccessMessage('Welcome back!');
-        setTimeout(() => {
-          onSuccess?.();
-          onClose();
-        }, 600);
+        onSuccess?.(user);
+        onClose();
       }
     }
   };

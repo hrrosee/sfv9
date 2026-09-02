@@ -1,12 +1,13 @@
 // StudyFlow PWA Service Worker
-const CACHE_NAME = 'studyflow-cache-v2';
+const CACHE_NAME = 'studyflow-cache-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/favicon.svg',
   '/manifest.json',
   '/pwa-192x192.png',
-  '/pwa-512x512.png'
+  '/pwa-512x512.png',
+  '/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {

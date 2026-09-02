@@ -6,6 +6,7 @@ import {
   KeyRound, 
   Users 
 } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 
 interface UserProfilePopoverProps {
   isOpen: boolean;
@@ -75,19 +76,13 @@ export const UserProfilePopover: React.FC<UserProfilePopoverProps> = ({
         {/* 1. Header: User Avatar, Name, Email */}
         <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-50/90 rounded-lg mb-1 border border-slate-100/90">
           <div className="relative w-7 h-7 shrink-0">
-            <div className="w-7 h-7 rounded-full overflow-hidden border border-slate-200/90 bg-white flex items-center justify-center shadow-3xs">
-              {currentUser.photoURL ? (
-                <img
-                  src={currentUser.photoURL}
-                  alt={currentUser.displayName || 'Avatar'}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-tr from-[#3B82F6] to-[#1D4ED8] text-white font-black text-[10px] flex items-center justify-center uppercase">
-                  {currentUser.displayName?.[0] || currentUser.email?.[0] || 'U'}
-                </div>
-              )}
-            </div>
+            <UserAvatar
+              photoURL={currentUser.photoURL}
+              displayName={currentUser.displayName}
+              email={currentUser.email}
+              textClassName="text-[10px]"
+              className="border border-slate-200/90 bg-white shadow-3xs"
+            />
             {/* Live Micro Status Dot */}
             <span
               className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-white dark:ring-slate-900 pointer-events-none ${

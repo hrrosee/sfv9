@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Check, Loader2, Sparkles, Camera } from 'lucide-react';
 import { updateUserProfile, auth } from '../firebase';
+import { UserAvatar } from './UserAvatar';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -92,19 +93,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             {/* Avatar Preview */}
             <div className="flex flex-col items-center mb-5">
               <div className="relative w-16 h-16 rounded-full border-2 border-blue-500/30 p-0.5 shadow-sm">
-                <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
-                  {currentUser?.photoURL ? (
-                    <img
-                      src={currentUser.photoURL}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-tr from-[#3B82F6] to-[#1D4ED8] text-white font-black text-xl flex items-center justify-center uppercase">
-                      {name?.[0] || currentUser?.email?.[0] || 'U'}
-                    </div>
-                  )}
-                </div>
+                <UserAvatar
+                  photoURL={currentUser?.photoURL}
+                  displayName={name || currentUser?.displayName}
+                  email={currentUser?.email}
+                  textClassName="text-xl"
+                  className="bg-slate-100"
+                />
               </div>
               <span className="text-[11px] text-slate-400 mt-1.5 font-medium">{currentUser?.email}</span>
             </div>
