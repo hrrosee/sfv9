@@ -66,6 +66,7 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
   const touchStartScrollTopRef = useRef<number>(0);
   const isPullingDownRef = useRef<boolean>(false);
   const heroOpenAtTouchStartRef = useRef<boolean>(true);
+  const isScrollingToTopRef = useRef<boolean>(false);
 
   // Calculations
   const totalCount = tasks.length;
@@ -253,10 +254,22 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
     setEditingTaskTitle('');
   };
 
+  const handleScrollToTopAndOpenHero = () => {
+    setIsHeroOpen(true);
+    setPullDistance(0);
+    tasksScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="flex-1 w-full h-full flex flex-col bg-[#F8FAFC] dark:bg-slate-950 min-w-0 overflow-hidden select-none">
       {/* 1. TOP STICKY HEADER (Matches NotesStudio 1:1) */}
-      <div className="h-12 sm:h-14 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 px-3.5 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-3xs">
+      <div
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
+        onSelectStart={(e) => e.preventDefault()}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+        className="no-copy-header h-12 sm:h-14 bg-white/85 dark:bg-slate-900/85 backdrop-blur-[20px] border-b border-slate-200/70 dark:border-white/[0.06] px-3.5 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-3xs select-none [&_*]:select-none"
+      >
         <div className="flex items-center gap-2 min-w-0">
           {/* Mobile Hamburger Menu Button */}
           <button
@@ -273,18 +286,21 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
           </button>
 
           {/* Mobile Compact Title (Smooth Fade-In when Hero is collapsed) */}
-          <div
-            className="flex items-center min-w-0 pointer-events-none transition-all duration-200"
+          <button
+            type="button"
+            onClick={handleScrollToTopAndOpenHero}
+            className="flex items-center min-w-0 cursor-pointer active:opacity-70 text-left transition-all duration-200"
             style={{
               opacity: isHeroOpen ? (pullDistance > 0 ? Math.max(0, 1 - pullDistance / 40) : 0) : Math.min(1, 1 - pullDistance / 60),
               transform: `translateY(${isHeroOpen ? 6 : 0}px)`,
               display: isHeroOpen && pullDistance === 0 ? 'none' : 'flex',
             }}
+            title="Tap to scroll to top"
           >
             <h1 className="font-serif font-bold text-[15.5px] text-slate-900 dark:text-slate-100 tracking-tight truncate leading-none">
               Tasks
             </h1>
-          </div>
+          </button>
         </div>
 
         {/* Right Actions: Header Gradient Progress Bar & Clear Completed Button */}
@@ -327,27 +343,30 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
       <div className="flex-1 min-h-0 flex justify-center overflow-hidden">
         <div className="w-full max-w-3xl flex flex-col min-h-0 relative bg-white dark:bg-slate-900 border-x border-slate-200/60 dark:border-slate-800 shadow-3xs">
           
-          {/* Collapsible Hero Header Layer (1:1 with NotesStudio.tsx) */}
+          {/* Collapsible Hero Header Layer (1:1 with NotesStudio.tsx & Zero-Bounce) */}
           <motion.div
             initial={false}
             animate={{
               height: (typeof window !== 'undefined' && window.innerWidth >= 768) ? 132 : (isHeroOpen ? 132 : pullDistance > 0 ? pullDistance : 0),
               opacity: (typeof window !== 'undefined' && window.innerWidth >= 768) ? 1 : getHeroOpacity(),
             }}
-            transition={{
-              height: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-              opacity: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-            }}
-            className="overflow-hidden bg-white dark:bg-slate-900 flex flex-col items-center text-center select-none shrink-0 md:!h-[132px] md:!opacity-100"
+            transition={
+              pullDistance > 0
+                ? { duration: 0 }
+                : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+            }
+            className="overflow-hidden bg-white dark:bg-slate-900 flex flex-col items-center text-center select-none shrink-0 md:!h-[132px] md:!opacity-100 transform-gpu"
           >
             <motion.div
               animate={{
                 y: (typeof window !== 'undefined' && window.innerWidth >= 768) ? 0 : (isHeroOpen ? 0 : pullDistance > 0 ? pullDistance - 132 : -132),
               }}
-              transition={{
-                y: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-              }}
-              className="pt-3.5 pb-1 px-4 flex flex-col items-center text-center select-none w-full md:!translate-y-0"
+              transition={
+                pullDistance > 0
+                  ? { duration: 0 }
+                  : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+              }
+              className="pt-3.5 pb-1 px-4 flex flex-col items-center text-center select-none w-full md:!translate-y-0 transform-gpu"
             >
               {/* 1. Gradient Icon Badge */}
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-[#2563EB] to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 mb-2">
@@ -651,6 +670,7 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
           <div
             ref={tasksScrollRef}
             onTouchStart={(e) => {
+              isScrollingToTopRef.current = false;
               touchStartYRef.current = e.touches[0]?.clientY ?? 0;
               touchStartTimeRef.current = Date.now();
               const st = tasksScrollRef.current?.scrollTop ?? 0;
@@ -685,7 +705,7 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
               const deltaY = currentY - touchStartYRef.current;
               const deltaTime = Math.max(1, Date.now() - touchStartTimeRef.current);
               const velocityY = deltaY / deltaTime; // pixels per ms
-              
+
               // Ignore simple taps but restore open state
               if (Math.abs(deltaY) < 5) {
                 if (heroOpenAtTouchStartRef.current) setIsHeroOpen(true);
@@ -721,18 +741,25 @@ export const TasksStudio: React.FC<TasksStudioProps> = ({
               }
             }}
             onScroll={(e) => {
+              if (isScrollingToTopRef.current) return;
               if (window.innerWidth < 768) {
                 const st = e.currentTarget.scrollTop;
-                if (isHeroOpen && st > 8) {
-                  setPullDirection('up');
-                  setIsHeroOpen(false);
-                  setPullDistance(0);
+                if (isHeroOpen) {
+                  // Lock list scroll strictly at top 0 until hero is completely closed!
+                  if (st > 0) {
+                    e.currentTarget.scrollTop = 0;
+                  }
+                  if (st > 4) {
+                    setPullDirection('up');
+                    setIsHeroOpen(false);
+                    setPullDistance(0);
+                  }
                 }
               }
             }}
-            className={`flex-1 min-h-0 custom-scrollbar p-0 bg-white dark:bg-slate-900 ${
-              (!isHeroOpen && pullDistance === 0) ? 'overflow-y-auto' : 'overflow-hidden'
-            } md:!overflow-y-auto`}
+            className={`flex-1 min-h-0 custom-scrollbar p-0 pb-20 bg-white dark:bg-slate-900 ${
+              (!isHeroOpen && pullDistance === 0) ? 'overflow-y-auto' : 'overflow-hidden md:overflow-y-auto'
+            }`}
           >
             <AnimatePresence mode="wait">
               {filteredAndSortedTasks.length === 0 ? (

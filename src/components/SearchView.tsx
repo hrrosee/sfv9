@@ -11,6 +11,7 @@ import {
   List,
   ChevronDown,
   Sparkles,
+  Compass,
   History,
   ChevronRight,
   Calendar,
@@ -820,10 +821,38 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
   });
 
+  // Keep state synced with localStorage when opened
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('studyflow_recent_clicked_results');
+      if (saved) {
+        setRecentClickedResults(JSON.parse(saved));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const saveRecentClickedResult = (item: GlobalSearchResultItem) => {
-    if (!item || !item.id) return;
+    if (!item || !item.id || !item.title) return;
+    const cleanItem: GlobalSearchResultItem = {
+      id: item.id,
+      type: item.type,
+      title: item.title,
+      workspaceId: item.workspaceId,
+      workspaceName: item.workspaceName,
+      sectionName: item.sectionName,
+      topicId: item.topicId,
+      topicTitle: item.topicTitle,
+      taskId: item.taskId,
+      taskTitle: item.taskTitle,
+      status: item.status,
+      dueDate: item.dueDate,
+      linkUrl: item.linkUrl,
+      linkType: item.linkType,
+    };
     setRecentClickedResults(prev => {
-      const updated = [item, ...prev.filter(i => i.id !== item.id)].slice(0, 6);
+      const updated = [cleanItem, ...prev.filter(i => i.id !== cleanItem.id)].slice(0, 10);
       try {
         localStorage.setItem('studyflow_recent_clicked_results', JSON.stringify(updated));
       } catch (err) {
@@ -831,6 +860,28 @@ export const SearchView: React.FC<SearchViewProps> = ({
       }
       return updated;
     });
+  };
+
+  const deleteQuickExploreItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecentClickedResults(prev => {
+      const updated = prev.filter(i => i.id !== id);
+      try {
+        localStorage.setItem('studyflow_recent_clicked_results', JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to update quick explore results', err);
+      }
+      return updated;
+    });
+  };
+
+  const clearQuickExplore = () => {
+    setRecentClickedResults([]);
+    try {
+      localStorage.removeItem('studyflow_recent_clicked_results');
+    } catch {
+      // ignore
+    }
   };
 
   const allGlobalSearchItems = useMemo<GlobalSearchResultItem[]>(() => {
@@ -1371,10 +1422,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15, ease: 'easeOut' }}
-                  className="flex-1 w-full flex flex-col h-full overflow-hidden"
+                  className="flex-1 w-full flex flex-col h-full overflow-hidden relative z-10 bg-white dark:bg-[#090D16]"
                 >
                 {/* 1. TOP HEADER (Mobile Only: Hamburger Menu + Dynamic Animated 'Search' Title; Hidden on Desktop) */}
-                <div className="md:hidden shrink-0 h-[56px] px-4 bg-white border-b border-slate-200/80 flex items-center justify-between z-30 relative select-none">
+                <div
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
+                  onSelectStart={(e) => e.preventDefault()}
+                  style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                  className="no-copy-header md:hidden shrink-0 h-[56px] px-4 bg-white/85 dark:bg-slate-900/85 backdrop-blur-[20px] border-b border-slate-200/70 dark:border-white/[0.06] flex items-center justify-between z-30 relative select-none [&_*]:select-none"
+                >
                   <div className="flex items-center gap-2.5 min-w-0">
                     {/* Mobile Hamburger Menu Button */}
                     <button
@@ -1406,27 +1463,30 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   </div>
                 </div>
 
-                {/* 2. COLLAPSIBLE HERO HEADER (Mobile Only: 1:1 Motion & Tiered Fade) */}
+                {/* 2. COLLAPSIBLE HERO HEADER (Mobile Only: 1:1 Motion & Zero-Bounce) */}
                 <motion.div
                   initial={false}
                   animate={{
                     height: isHeroOpen ? 120 : pullDistance > 0 ? pullDistance : 0,
                     opacity: getHeroOpacity(),
                   }}
-                  transition={{
-                    height: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                    opacity: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                  }}
-                  className="md:hidden overflow-hidden bg-white flex flex-col items-center text-center select-none shrink-0"
+                  transition={
+                    pullDistance > 0
+                      ? { duration: 0 }
+                      : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+                  }
+                  className="md:hidden overflow-hidden bg-white flex flex-col items-center text-center select-none shrink-0 transform-gpu"
                 >
                   <motion.div
                     animate={{
                       y: isHeroOpen ? 0 : pullDistance > 0 ? pullDistance - 120 : -120,
                     }}
-                    transition={{
-                      y: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                    }}
-                    className="h-[120px] pt-3 pb-1.5 px-4 flex flex-col items-center justify-center text-center select-none w-full"
+                    transition={
+                      pullDistance > 0
+                        ? { duration: 0 }
+                        : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+                    }
+                    className="h-[120px] pt-3 pb-1.5 px-4 flex flex-col items-center justify-center text-center select-none w-full bg-white transform-gpu"
                   >
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-[#2563EB] to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 mb-1.5 shrink-0">
                       <Search className="w-[24px] h-[24px] stroke-[2.4]" />
@@ -1458,7 +1518,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         onBlur={() => setIsSearchInputFocused(false)}
                         onChange={e => setSearchPageQuery(e.target.value)}
                         onKeyDown={handleSearchInputKeyDown}
-                        placeholder="Search workspaces, topics, tasks, notes, links..."
+                        placeholder="Start typing to search"
                         className={`w-full h-[38px] pl-9 ${
                           searchPageQuery.trim() ? 'pr-28' : 'pr-10'
                         } bg-slate-50/90 hover:bg-white focus:bg-white border border-slate-200/80 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 rounded-lg text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all shadow-3xs [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none`}
@@ -1598,11 +1658,19 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     }
                   }}
                   onScroll={(e) => {
-                    const st = e.currentTarget.scrollTop;
-                    if (isHeroOpen && st > 8) {
-                      setPullDirection('up');
-                      setIsHeroOpen(false);
-                      setPullDistance(0);
+                    // Mobile only hero auto-close logic
+                    if (window.innerWidth < 768) {
+                      const st = e.currentTarget.scrollTop;
+                      if (isHeroOpen) {
+                        if (st > 0) {
+                          e.currentTarget.scrollTop = 0;
+                        }
+                        if (st > 4) {
+                          setPullDirection('up');
+                          setIsHeroOpen(false);
+                          setPullDistance(0);
+                        }
+                      }
                     }
                   }}
                   className={`flex-1 w-full no-scrollbar pt-3 px-4 sm:px-6 pb-16 ${
@@ -1776,7 +1844,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             onBlur={() => setIsSearchInputFocused(false)}
                             onChange={e => setSearchPageQuery(e.target.value)}
                             onKeyDown={handleSearchInputKeyDown}
-                            placeholder="Search workspaces, topics, tasks, notes, links..."
+                            placeholder="Start typing to search"
                             className={`w-full h-11 pl-10 ${
                               searchPageQuery.trim() ? 'pr-32 sm:pr-36' : 'pr-14'
                             } bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/90 focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/20 rounded-md text-xs sm:text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all shadow-xs [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none`}
@@ -2143,32 +2211,56 @@ export const SearchView: React.FC<SearchViewProps> = ({
                             </div>
                           )}
 
-                          {/* Initial Empty Prompt Card */}
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg p-8 sm:p-10 text-center flex flex-col items-center justify-center gap-3 shadow-2xs">
-                            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#2563EB] dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 flex items-center justify-center shadow-3xs">
-                              <Search className="w-6 h-6 stroke-[2]" />
-                            </div>
-                            <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100">Start typing to search</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
-                              Type any keyword to instantly find workspaces, sections, topics, tasks, notes, and links across your study plan.
-                            </p>
-                            {recentClickedResults.length > 0 && (
-                              <div className="flex items-center gap-2 mt-2 flex-wrap justify-center text-xs text-slate-400">
-                                <span className="font-medium text-slate-500 dark:text-slate-400">Quick explore:</span>
-                                {recentClickedResults.map(item => (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => handleSelectSearchResult(item)}
-                                    className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-[#2563EB] dark:hover:text-blue-400 text-slate-700 dark:text-slate-200 font-medium transition-colors cursor-pointer border border-slate-200/60 dark:border-slate-700 max-w-[200px] truncate"
-                                    title={`Open ${item.title}`}
-                                  >
-                                    {item.title}
-                                  </button>
-                                ))}
+                          {/* Quick Explore Section (Shown when user has clicked results) */}
+                          {recentClickedResults.length > 0 && (
+                            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg px-3.5 sm:px-4 py-2.5 sm:py-3 shadow-2xs flex flex-col gap-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  <Compass className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
+                                  <span>Quick Explore</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={clearQuickExplore}
+                                  className="text-[11px] font-semibold text-slate-400 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 transition-colors cursor-pointer select-none"
+                                >
+                                  Clear
+                                </button>
                               </div>
-                            )}
-                          </div>
+                              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                {recentClickedResults.map(item => {
+                                  const ItemIcon = item.type === 'workspace' ? BookOpen
+                                    : item.type === 'section' ? Folder
+                                    : item.type === 'task' ? CheckSquare
+                                    : item.type === 'topicNote' || item.type === 'taskNote' ? FileText
+                                    : item.type === 'topicLink' || item.type === 'taskLink' ? Link
+                                    : item.type === 'taskDescription' ? AlignLeft
+                                    : Atom;
+
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      onClick={() => handleSelectSearchResult(item)}
+                                      className="flex items-center gap-1.5 pl-2 sm:pl-2.5 pr-1.5 sm:pr-2 py-1.5 rounded-md bg-slate-50 dark:bg-slate-800/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 active:bg-blue-100 hover:text-[#2563EB] dark:hover:text-blue-400 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors cursor-pointer border border-slate-200/80 dark:border-slate-700 select-none shadow-3xs group max-w-full"
+                                      title={`Open ${item.title}`}
+                                    >
+                                      <ItemIcon className="w-3.5 h-3.5 text-[#2563EB] dark:text-blue-400 shrink-0 group-hover:scale-110 transition-transform" />
+                                      <span className="truncate max-w-[140px] sm:max-w-[180px]">{item.title}</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => deleteQuickExploreItem(item.id, e)}
+                                        onTouchEnd={(e) => e.stopPropagation()}
+                                        className="p-0.5 rounded-full text-slate-400 hover:text-rose-500 active:text-rose-600 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
+                                        title="Remove"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </motion.div>
                       ) : (
                         <motion.div

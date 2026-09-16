@@ -9,6 +9,7 @@
   src: local('Inter'), url('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2') format('woff2');
   unicode-range: U+0000-007F, U+0080-024F, U+2000-206F, U+2070-209F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2200-22FF;
   size-adjust: 91.67%;
+  font-display: swap;
 }
 
 @theme {
@@ -78,7 +79,8 @@ input, textarea {
 }
 
 html, body {
-  overscroll-behavior-y: auto;
+  overscroll-behavior-y: none;
+  overscroll-behavior: none;
 }
 
 html {
@@ -143,11 +145,35 @@ html.dark body {
   background-color: #1e293b !important;
 }
 
-.dark .bg-white\/95,
-.dark .bg-white\/90,
-.dark .bg-white\/80,
-.dark .bg-white\/70 {
+.dark .bg-white\/95 {
   background-color: rgba(17, 24, 39, 0.95) !important;
+}
+
+.dark .bg-white\/85,
+.dark .bg-white\/94,
+.dark .bg-white\/90 {
+  background-color: rgba(9, 13, 22, 0.85) !important;
+}
+
+.dark .bg-slate-900\/85,
+.dark .bg-slate-900\/94,
+.dark .bg-slate-900\/90 {
+  background-color: rgba(15, 23, 42, 0.85) !important;
+}
+
+.dark .bg-\[\#090D16\]\/85,
+.dark .bg-\[\#090D16\]\/94,
+.dark .bg-\[\#090D16\]\/90 {
+  background-color: rgba(9, 13, 22, 0.85) !important;
+}
+
+.dark .bg-white\/80,
+.dark .bg-\[\#090D16\]\/80 {
+  background-color: rgba(9, 13, 22, 0.75) !important;
+}
+
+.dark .bg-white\/70 {
+  background-color: rgba(17, 24, 39, 0.70) !important;
 }
 
 /* 2. Global Borders & Dividers */
@@ -1076,11 +1102,16 @@ html.dark .bg-blue-50:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/90:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/80:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/70:not(.preserve-color):not(.preserve-color *),
+html.dark .bg-blue-50\/60:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/50:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/40:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/30:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-50\/20:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-blue-100:not(.preserve-color):not(.preserve-color *),
+html.dark .bg-blue-100\/90:not(.preserve-color):not(.preserve-color *),
+html.dark .bg-blue-100\/70:not(.preserve-color):not(.preserve-color *),
+html.dark .bg-blue-100\/50:not(.preserve-color):not(.preserve-color *),
+html.dark .bg-blue-100\/35:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-\[\#F4F8FF\]:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-\[\#E6F0FF\]:not(.preserve-color):not(.preserve-color *),
 html.dark .bg-\[\#EEF4FF\]:not(.preserve-color):not(.preserve-color *),
@@ -1093,6 +1124,17 @@ html.dark .hover\:bg-blue-950\/30:hover:not(.preserve-color):not(.preserve-color
 html.dark .hover\:bg-blue-950\/50:hover:not(.preserve-color):not(.preserve-color *),
 html.dark .hover\:bg-blue-900\/65:hover:not(.preserve-color):not(.preserve-color *),
 html.dark .hover\:bg-blue-50:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/90:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/80:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/70:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/60:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/50:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/40:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-50\/30:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-100:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-100\/90:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-blue-100\/70:hover:not(.preserve-color):not(.preserve-color *),
+html.dark .hover\:bg-\[\#b2d4fe\]\/85:hover:not(.preserve-color):not(.preserve-color *),
 html.dark .hover\:bg-blue-50\/70:hover:not(.preserve-color):not(.preserve-color *) {
   background-color: var(--primary-dark-hover-bg) !important;
 }
@@ -1200,6 +1242,26 @@ html.dark .brand-flow-highlight {
 
 /* ==========================================================================
    Universal Theme Transition Blocker (Zero Lag, Zero Blink on Load & Toggle)
+   ========================================================================== */
+/* Hardware Accelerated Smooth Rendering & Touch Physics Optimizations */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gpu-accelerated,
+.motion-reduce-gpu {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Fast Smooth Scroll Container */
+.smooth-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Dark Mode Color Overrides
    ========================================================================== */
 html:not(.hydrated),
 html:not(.hydrated) *,

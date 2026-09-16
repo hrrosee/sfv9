@@ -37,27 +37,28 @@ import {
 } from 'lucide-react';
 
 import { UserSettings } from '../types';
-import { getInitialTheme, resolveEffectiveTheme, ThemeMode } from '../utils/themeManager';
+import { getInitialTheme, resolveEffectiveTheme, ThemeMode, getInitialAccentColor, applyAccentColor } from '../utils/themeManager';
 
 export interface LandingPageProps {
-  onGetStarted: () => void;
-  onSignIn: () => void;
+  onGetStarted: (accentId?: string) => void;
+  onSignIn: (accentId?: string) => void;
   userSettings?: UserSettings;
   onToggleTheme?: () => void;
+  onAccentChange?: (accentId: string) => void;
 }
 
 /* ==========================================================================
    1. CONSTANTS & DATA CONFIGURATIONS
    ========================================================================== */
 // Ultra-Soft & Gentle Accent Theme Glow Presets (100% Theme Synchronized)
-const ACCENT_PRESETS = [
-  { id: 'blue', name: 'Electric Blue', hex: '#2563EB', grad: 'from-blue-600 to-indigo-600', ring: 'ring-blue-500', glow: 'from-blue-600/18 via-indigo-600/[0.08]' },
-  { id: 'emerald', name: 'Emerald Green', hex: '#059669', grad: 'from-emerald-600 to-teal-600', ring: 'ring-emerald-500', glow: 'from-emerald-600/18 via-teal-600/[0.08]' },
-  { id: 'purple', name: 'Indigo Purple', hex: '#7C3AED', grad: 'from-purple-600 to-indigo-600', ring: 'ring-purple-500', glow: 'from-purple-600/18 via-indigo-600/[0.08]' },
-  { id: 'crimson', name: 'Crimson Red', hex: '#DC2626', grad: 'from-rose-600 to-red-600', ring: 'ring-rose-500', glow: 'from-rose-600/18 via-red-600/[0.08]' },
-  { id: 'amber', name: 'Amber Gold', hex: '#D97706', grad: 'from-amber-600 to-orange-600', ring: 'ring-amber-500', glow: 'from-amber-600/18 via-orange-600/[0.08]' },
-  { id: 'rose', name: 'Rose Pink', hex: '#E11D48', grad: 'from-pink-600 to-rose-600', ring: 'ring-pink-500', glow: 'from-pink-600/18 via-rose-600/[0.08]' },
-  { id: 'cyan', name: 'Cyan Ocean', hex: '#0891B2', grad: 'from-cyan-600 to-blue-600', ring: 'ring-cyan-500', glow: 'from-cyan-600/18 via-blue-600/[0.08]' },
+export const ACCENT_PRESETS = [
+  { id: 'blue', name: 'Electric Blue', hex: '#2563EB', grad: 'from-blue-600 to-indigo-600', ring: 'ring-blue-500', glow: 'from-blue-600/18 via-indigo-600/[0.08]', shadow: 'shadow-blue-600/25' },
+  { id: 'green', name: 'Emerald Green', hex: '#059669', grad: 'from-emerald-600 to-teal-600', ring: 'ring-emerald-500', glow: 'from-emerald-600/18 via-teal-600/[0.08]', shadow: 'shadow-emerald-600/25' },
+  { id: 'purple', name: 'Indigo Purple', hex: '#7C3AED', grad: 'from-purple-600 to-indigo-600', ring: 'ring-purple-500', glow: 'from-purple-600/18 via-indigo-600/[0.08]', shadow: 'shadow-purple-600/25' },
+  { id: 'orange', name: 'Crimson Red', hex: '#DC2626', grad: 'from-rose-600 to-red-600', ring: 'ring-rose-500', glow: 'from-rose-600/18 via-red-600/[0.08]', shadow: 'shadow-rose-600/25' },
+  { id: 'amber', name: 'Amber Gold', hex: '#D97706', grad: 'from-amber-600 to-orange-600', ring: 'ring-amber-500', glow: 'from-amber-600/18 via-orange-600/[0.08]', shadow: 'shadow-amber-600/25' },
+  { id: 'pink', name: 'Rose Pink', hex: '#E11D48', grad: 'from-pink-600 to-rose-600', ring: 'ring-pink-500', glow: 'from-pink-600/18 via-rose-600/[0.08]', shadow: 'shadow-pink-600/25' },
+  { id: 'cyan', name: 'Cyan Ocean', hex: '#0891B2', grad: 'from-cyan-600 to-blue-600', ring: 'ring-cyan-500', glow: 'from-cyan-600/18 via-blue-600/[0.08]', shadow: 'shadow-cyan-600/25' },
 ];
 
 const NAV_ITEMS = [
@@ -71,7 +72,7 @@ const NAV_ITEMS = [
 /* ==========================================================================
    MAIN COMPONENT: LandingPage
    ========================================================================== */
-export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn, userSettings, onToggleTheme }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn, userSettings, onToggleTheme, onAccentChange }) => {
 
   const computeEffectiveDark = (): boolean => {
     if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
@@ -88,8 +89,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
     setIsDark(computeEffectiveDark());
   }, [userSettings?.theme]);
 
-  // Interactive 7 Accent Theme Selection (Session Demo Only)
-  const [activeAccent, setActiveAccent] = useState(ACCENT_PRESETS[0]);
+  // Interactive 7 Accent Theme Selection (LocalStorage Sync & Persistence)
+  const [activeAccent, setActiveAccent] = useState(() => {
+    const savedAccent = getInitialAccentColor();
+    return ACCENT_PRESETS.find(p => p.id === savedAccent) || ACCENT_PRESETS[0];
+  });
+
+  const handleSelectAccent = (preset: typeof ACCENT_PRESETS[0]) => {
+    setActiveAccent(preset);
+    try {
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-accent', preset.id);
+      }
+      applyAccentColor(preset.id as any);
+      const saved = localStorage.getItem('studyflow_user_settings');
+      const parsed = saved ? JSON.parse(saved) : {};
+      parsed.primaryColor = preset.id;
+      localStorage.setItem('studyflow_user_settings', JSON.stringify(parsed));
+      if (onAccentChange) {
+        onAccentChange(preset.id);
+      }
+    } catch (_) {}
+  };
 
   // Active Scrollspy Navbar Section State & Sticky Scrolled State
   const [activeNavSection, setActiveNavSection] = useState<string>('hero');
@@ -391,7 +412,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
               type="button"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.96 }}
-              onClick={onSignIn}
+              onClick={() => onSignIn(activeAccent.id)}
               className="hidden sm:inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200/90 dark:hover:bg-slate-700/90 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-white/10 shadow-xs backdrop-blur-md transition-all cursor-pointer whitespace-nowrap shrink-0 min-h-[38px] sm:min-h-[42px]"
             >
               <LogIn className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
@@ -401,8 +422,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
             {/* Primary CTA Button (Compact, No Wrap, Responsive Padding) */}
             <button
               type="button"
-              onClick={onGetStarted}
-              className={`relative overflow-hidden inline-flex items-center gap-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl bg-gradient-to-r ${activeAccent.grad} text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-600/25 active:scale-95 transition-all cursor-pointer group whitespace-nowrap shrink-0 min-h-[38px] sm:min-h-[42px]`}
+              onClick={() => onGetStarted(activeAccent.id)}
+              className={`relative overflow-hidden inline-flex items-center gap-1.5 px-3.5 sm:px-4.5 py-2 rounded-xl bg-gradient-to-r ${activeAccent.grad} text-white font-bold text-xs sm:text-sm shadow-md ${activeAccent.shadow} active:scale-95 transition-all cursor-pointer group whitespace-nowrap shrink-0 min-h-[38px] sm:min-h-[42px]`}
             >
               {/* Moving Shimmer Light Beam */}
               <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none"></span>
@@ -473,7 +494,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
               <div className="pt-2 border-t border-slate-200 dark:border-white/10 flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => { setIsMobileMenuOpen(false); onSignIn(); }}
+                  onClick={() => { setIsMobileMenuOpen(false); onSignIn(activeAccent.id); }}
                   className="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-bold text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-white/10 flex items-center justify-center gap-2 min-h-[44px] transition-colors cursor-pointer"
                 >
                   <LogIn className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -481,8 +502,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setIsMobileMenuOpen(false); onGetStarted(); }}
-                  className={`w-full py-3 rounded-xl bg-gradient-to-r ${activeAccent.grad} text-white text-sm font-bold shadow-md shadow-blue-500/20 min-h-[44px] transition-all cursor-pointer`}
+                  onClick={() => { setIsMobileMenuOpen(false); onGetStarted(activeAccent.id); }}
+                  className={`w-full py-3 rounded-xl bg-gradient-to-r ${activeAccent.grad} text-white text-sm font-bold shadow-md ${activeAccent.shadow} min-h-[44px] transition-all cursor-pointer`}
                 >
                   Get Started Free 🚀
                 </button>
@@ -541,7 +562,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
                   whileTap={{ scale: 0.9 }}
                   animate={{ scale: isActive ? 1.25 : 1 }}
                   transition={{ type: 'spring', stiffness: 450, damping: 25 }}
-                  onClick={() => setActiveAccent(p)}
+                  onClick={() => handleSelectAccent(p)}
                   style={{ backgroundColor: p.hex }}
                   className={`w-6 h-6 rounded-full cursor-pointer min-w-[24px] shrink-0 outline-none ${
                     isActive
@@ -566,8 +587,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
             type="button"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={onGetStarted}
-            className={`relative overflow-hidden w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r ${activeAccent.grad} text-white font-bold text-sm sm:text-base shadow-xl shadow-blue-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 group min-h-[48px]`}
+            onClick={() => onGetStarted(activeAccent.id)}
+            className={`relative overflow-hidden w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r ${activeAccent.grad} text-white font-bold text-sm sm:text-base shadow-xl ${activeAccent.shadow} transition-all cursor-pointer flex items-center justify-center gap-2 group min-h-[48px]`}
           >
             <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none"></span>
             <span>Start Free Today</span>
@@ -1193,7 +1214,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
         transition={{ type: 'spring', stiffness: 190, damping: 22 }}
         className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto"
       >
-        <div className={`relative rounded-3xl bg-gradient-to-r ${activeAccent.grad} p-8 sm:p-12 lg:p-16 text-center text-white overflow-hidden shadow-2xl shadow-blue-600/25 transition-all duration-500`}>
+        <div className={`relative rounded-3xl bg-gradient-to-r ${activeAccent.grad} p-8 sm:p-12 lg:p-16 text-center text-white overflow-hidden shadow-2xl ${activeAccent.shadow} transition-all duration-500`}>
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-white/10 blur-2xl"></div>
           <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight max-w-2xl mx-auto leading-tight">আজই শুরু হোক আপনার সুশৃঙ্খল পড়ার যাত্রা</h2>
           <p className="mt-4 text-sm sm:text-base text-white/90 max-w-xl mx-auto">হাজারো শিক্ষার্থীর মতো নিজের সিলেবাস ও পড়ার সময়কে সম্পূর্ণ নিয়ন্ত্রণে রাখুন। ১০০% ফ্রি ও সুরক্ষিত।</p>
@@ -1202,7 +1223,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
               type="button"
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
-              onClick={onGetStarted}
+              onClick={() => onGetStarted(activeAccent.id)}
               className="relative overflow-hidden px-8 py-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm sm:text-base shadow-xl active:scale-95 transition-all cursor-pointer flex items-center gap-2 group min-h-[48px]"
             >
               <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-blue-500/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none"></span>
@@ -1227,7 +1248,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onSignIn
             <button type="button" onClick={() => scrollToSection('themes')} className="hover:text-blue-500 cursor-pointer min-h-[44px]">Themes</button>
             <button type="button" onClick={() => scrollToSection('syllabus')} className="hover:text-blue-500 cursor-pointer min-h-[44px]">Syllabus</button>
             <button type="button" onClick={() => scrollToSection('faq')} className="hover:text-blue-500 cursor-pointer min-h-[44px]">FAQ</button>
-            <button type="button" onClick={onSignIn} className="hover:text-blue-500 cursor-pointer min-h-[44px]">Login</button>
+            <button type="button" onClick={() => onSignIn(activeAccent.id)} className="hover:text-blue-500 cursor-pointer min-h-[44px]">Login</button>
           </div>
         </div>
       </footer>

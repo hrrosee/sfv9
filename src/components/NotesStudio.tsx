@@ -905,7 +905,7 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
 
   // Sync editor content ONLY when activeNoteId changes or when switching notes
   useEffect(() => {
-    if (noteEditorMode === 'write' && editorContentRef.current && activeNote) {
+    if (editorContentRef.current && activeNote) {
       const isDifferentNote = lastLoadedNoteIdRef.current !== activeNote.id;
       const isExternalChange = !isDifferentNote && activeNote.content !== lastHtmlRef.current && activeNote.content !== editorContentRef.current.innerHTML;
 
@@ -916,90 +916,23 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
         lastHtmlRef.current = activeNote.content || '';
       }
 
-      // Position caret exactly where user clicked in preview mode, or at the end
-      setTimeout(() => {
-        if (!editorContentRef.current) return;
-        editorContentRef.current.focus();
+      // Only auto-focus and jump to end if the user actually switched to a DIFFERENT note
+      if (isDifferentNote && noteEditorMode === 'write') {
+        setTimeout(() => {
+          if (!editorContentRef.current) return;
+          editorContentRef.current.focus();
 
-        const selection = window.getSelection();
-        if (selection) {
-          const info = pendingCaretTargetInfoRef.current;
-          pendingCaretTargetInfoRef.current = null;
-
-          if (info && editorContentRef.current) {
-            const editorEl = editorContentRef.current;
-            const targetChild = editorEl.children[info.childIndex] || editorEl.firstChild;
-
-            if (targetChild) {
-              // Find the text node inside targetChild corresponding to charOffset
-              let currentOffset = 0;
-              let foundNode: Node | null = null;
-              let foundOffset = 0;
-
-              const walk = (node: Node) => {
-                if (foundNode) return;
-                if (node.nodeType === Node.TEXT_NODE) {
-                  const len = node.textContent?.length || 0;
-                  if (currentOffset + len >= info.charOffset) {
-                    foundNode = node;
-                    foundOffset = Math.max(0, Math.min(len, info.charOffset - currentOffset));
-                    return;
-                  }
-                  currentOffset += len;
-                } else {
-                  for (let i = 0; i < node.childNodes.length; i++) {
-                    walk(node.childNodes[i]);
-                  }
-                }
-              };
-
-              walk(targetChild);
-
-              if (foundNode) {
-                const range = document.createRange();
-                range.setStart(foundNode, foundOffset);
-                range.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(range);
-                updateToolbarState();
-                return;
-              }
-            }
-
-            // Fallback using coords if node walk failed
-            if (info.fallbackCoords) {
-              if (document.caretPositionFromPoint) {
-                const pos = document.caretPositionFromPoint(info.fallbackCoords.clientX, info.fallbackCoords.clientY);
-                if (pos && pos.offsetNode && editorContentRef.current.contains(pos.offsetNode)) {
-                  const range = document.createRange();
-                  range.setStart(pos.offsetNode, pos.offset);
-                  range.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(range);
-                  updateToolbarState();
-                  return;
-                }
-              } else if ((document as any).caretRangeFromPoint) {
-                const range = (document as any).caretRangeFromPoint(info.fallbackCoords.clientX, info.fallbackCoords.clientY);
-                if (range && editorContentRef.current.contains(range.startContainer)) {
-                  selection.removeAllRanges();
-                  selection.addRange(range);
-                  updateToolbarState();
-                  return;
-                }
-              }
-            }
+          const selection = window.getSelection();
+          if (selection) {
+            const range = document.createRange();
+            range.selectNodeContents(editorContentRef.current);
+            range.collapse(false); // collapse to end
+            selection.removeAllRanges();
+            selection.addRange(range);
           }
-
-          // Default Fallback: Place cursor at the end of the content
-          const range = document.createRange();
-          range.selectNodeContents(editorContentRef.current);
-          range.collapse(false); // collapse to end
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-        updateToolbarState();
-      }, 30);
+          updateToolbarState();
+        }, 30);
+      }
     }
   }, [activeNoteId, noteEditorMode]);
 
@@ -3609,44 +3542,13 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                   )}
 
                   {/* Body Content (100% Identical Typography & Layout in Preview and Write, Zero Selection Drops) */}
-                  {noteEditorMode === 'write' ? (
-                    <div className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4">
-                      <div
-                        ref={editorContentRef}
-                        contentEditable
-                        suppressContentEditableWarning
-                        data-placeholder="Start typing your notes, formulas, checklists..."
-                        onPaste={handleEditorPaste}
-                        onClick={(e) => {
-                          const target = e.target as HTMLElement;
-                          const checkItem = target.closest('.checklist-item');
-                          if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
-                            e.stopPropagation();
-                            const isChecked = checkItem.getAttribute('data-checked') === 'true';
-                            const nextChecked = !isChecked;
-                            checkItem.setAttribute('data-checked', String(nextChecked));
-                            const chkBox = checkItem.querySelector('.chk-box');
-                            const chkText = checkItem.querySelector('.chk-text');
-                            if (chkBox) {
-                              chkBox.className = `chk-box mt-1 w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${nextChecked ? 'bg-[#2563EB] border-[#2563EB] text-white font-bold' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'}`;
-                              chkBox.textContent = nextChecked ? '✓' : '';
-                            }
-                            if (chkText) {
-                              chkText.className = `chk-text flex-1 select-text ${nextChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}`;
-                            }
-                            scheduleDebouncedSave();
-                          }
-                        }}
-                        onInput={handleEditorInput}
-                        onKeyUp={updateToolbarState}
-                        onMouseUp={updateToolbarState}
-                        onSelect={updateToolbarState}
-                        onKeyDown={handleEditorKeyDown}
-                        className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
-                      />
-                    </div>
-                  ) : (
+                  <div className={`flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 ${noteEditorMode === 'write' ? 'block' : 'hidden'}`}>
                     <div
+                      ref={editorContentRef}
+                      contentEditable
+                      suppressContentEditableWarning
+                      data-placeholder="Start typing your notes, formulas, checklists..."
+                      onPaste={handleEditorPaste}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
                         const checkItem = target.closest('.checklist-item');
@@ -3664,34 +3566,124 @@ const NotesStudioComponent: React.FC<NotesStudioProps> = ({
                           if (chkText) {
                             chkText.className = `chk-text flex-1 select-text ${nextChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}`;
                           }
-                          const updatedHtml = (e.currentTarget.querySelector('.note-preview-content') as HTMLElement || e.currentTarget as HTMLElement).innerHTML;
-                          handleUpdateNote(activeNote.id, { content: updatedHtml });
-                          return;
+                          scheduleDebouncedSave();
                         }
-                        const linkEl = target.closest('a');
-                        if (linkEl) {
-                          e.stopPropagation();
-                          const href = linkEl.getAttribute('href');
-                          if (href) window.open(href, '_blank', 'noopener,noreferrer');
-                          return;
-                        }
-                        // Click anywhere in preview switches to edit mode with auto-focus
-                        setNoteEditorMode('write');
-                        setTimeout(() => {
-                          editorContentRef.current?.focus();
-                        }, 50);
                       }}
-                      className="flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 cursor-text select-text"
-                      title="Click anywhere to edit note"
-                    >
-                      <div
-                        className="note-preview-content space-y-1.5 focus:outline-none min-h-[320px] [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 select-text"
-                        dangerouslySetInnerHTML={{
-                          __html: activeNotePreviewHtml
-                        }}
-                      />
-                    </div>
-                  )}
+                      onInput={handleEditorInput}
+                      onKeyUp={updateToolbarState}
+                      onMouseUp={updateToolbarState}
+                      onSelect={updateToolbarState}
+                      onKeyDown={handleEditorKeyDown}
+                      className="space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 empty:before:pointer-events-none"
+                    />
+                  </div>
+
+                  <div
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      const checkItem = target.closest('.checklist-item');
+                      if (checkItem && (target.classList.contains('chk-box') || target.closest('.chk-box'))) {
+                        e.stopPropagation();
+                        const isChecked = checkItem.getAttribute('data-checked') === 'true';
+                        const nextChecked = !isChecked;
+                        checkItem.setAttribute('data-checked', String(nextChecked));
+                        const chkBox = checkItem.querySelector('.chk-box');
+                        const chkText = checkItem.querySelector('.chk-text');
+                        if (chkBox) {
+                          chkBox.className = `chk-box mt-1 w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${nextChecked ? 'bg-[#2563EB] border-[#2563EB] text-white font-bold' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'}`;
+                          chkBox.textContent = nextChecked ? '✓' : '';
+                        }
+                        if (chkText) {
+                          chkText.className = `chk-text flex-1 select-text ${nextChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}`;
+                        }
+                        const updatedHtml = (e.currentTarget.querySelector('.note-preview-content') as HTMLElement || e.currentTarget as HTMLElement).innerHTML;
+                        handleUpdateNote(activeNote.id, { content: updatedHtml });
+                        return;
+                      }
+                      const linkEl = target.closest('a');
+                      if (linkEl) {
+                        e.stopPropagation();
+                        const href = linkEl.getAttribute('href');
+                        if (href) window.open(href, '_blank', 'noopener,noreferrer');
+                        return;
+                      }
+
+                      // Capture coordinates and scroll state before modes toggle
+                      // We must calculate the relative position inside the container, because the Toolbar 
+                      // mounts in write mode and pushes the entire container down by ~40px!
+                      const containerRect = e.currentTarget.getBoundingClientRect();
+                      const relativeX = e.clientX - containerRect.left;
+                      const relativeY = e.clientY - containerRect.top;
+                      const currentScrollTop = e.currentTarget.scrollTop;
+
+                      setNoteEditorMode('write');
+
+                      // Wait 10ms for React to commit the DOM swap and Toolbar injection
+                      setTimeout(() => {
+                        if (editorContentRef.current && editorContentRef.current.parentElement) {
+                          const scrollParent = editorContentRef.current.parentElement;
+                          scrollParent.scrollTop = currentScrollTop;
+                          editorContentRef.current.focus();
+
+                          // Re-calculate the viewport coordinates using the NEW bounding box of the write container
+                          const newRect = scrollParent.getBoundingClientRect();
+                          const adjustedClickX = newRect.left + relativeX;
+                          const adjustedClickY = newRect.top + relativeY;
+
+                          const tryGetRange = (x: number, y: number) => {
+                            try {
+                              if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+                              if ((document as any).caretPositionFromPoint) {
+                                const pos = (document as any).caretPositionFromPoint(x, y);
+                                if (pos && pos.offsetNode) {
+                                  const r = document.createRange();
+                                  r.setStart(pos.offsetNode, pos.offset);
+                                  r.collapse(true);
+                                  return r;
+                                }
+                              }
+                            } catch (err) {}
+                            return null;
+                          };
+
+                          let range = tryGetRange(adjustedClickX, adjustedClickY);
+                          
+                          // Scan nearby if clicked directly on margin/padding
+                          if (!range) range = tryGetRange(adjustedClickX, adjustedClickY - 10);
+                          if (!range) range = tryGetRange(adjustedClickX, adjustedClickY + 10);
+                          if (!range) range = tryGetRange(adjustedClickX, adjustedClickY - 20);
+                          if (!range) range = tryGetRange(adjustedClickX, adjustedClickY + 20);
+
+                          const sel = window.getSelection();
+                          if (sel) {
+                            if (range) {
+                              sel.removeAllRanges();
+                              sel.addRange(range);
+                            } else {
+                              // Deep empty space click -> end of document
+                              const lastChild = editorContentRef.current.lastChild;
+                              if (lastChild) {
+                                const fallbackRange = document.createRange();
+                                fallbackRange.selectNodeContents(lastChild);
+                                fallbackRange.collapse(false);
+                                sel.removeAllRanges();
+                                sel.addRange(fallbackRange);
+                              }
+                            }
+                          }
+                        }
+                      }, 10);
+                    }}
+                    className={`flex-1 w-full overflow-y-auto custom-scrollbar pt-1 pb-4 cursor-text ${noteEditorMode === 'preview' ? 'block' : 'hidden'}`}
+                    title="Click anywhere to edit note"
+                  >
+                    <div
+                      className="note-preview-content space-y-1.5 focus:outline-none min-h-[320px] font-sans text-[14px] sm:text-[15px] leading-relaxed text-slate-800 dark:text-slate-200 select-text [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-slate-900 dark:[&_h1]:text-slate-100 [&_h1]:mt-3.5 [&_h1]:mb-1.5 [&_h1]:leading-tight [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:leading-tight [&_h3]:font-serif [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-slate-800 dark:[&_h3]:text-slate-100 [&_h3]:mt-2.5 [&_h3]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#2563EB]/60 [&_blockquote]:pl-3 [&_blockquote]:py-1 [&_blockquote]:bg-blue-50/40 dark:[&_blockquote]:bg-blue-950/30 [&_blockquote]:text-slate-700 dark:[&_blockquote]:text-slate-300 [&_blockquote]:rounded-r-md [&_blockquote]:my-2 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-1.5 [&_ul]:space-y-0.5 [&_ol]:list-decimal [&_ol]:list-inside [&_ol]:my-1.5 [&_ol]:space-y-0.5 [&_mark]:text-slate-900 dark:[&_mark]:text-slate-100 [&_mark]:font-medium [&_mark]:py-0.5 [&_mark]:rounded-[2px] [&_hr]:my-4 [&_hr]:border-slate-200 dark:[&_hr]:border-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:text-rose-600 dark:[&_code]:text-rose-400 [&_code]:rounded [&_code]:border [&_code]:border-slate-200/70 dark:[&_code]:border-slate-700 [&_a]:text-[#2563EB] dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:font-medium hover:[&_a]:text-blue-800 dark:hover:[&_a]:text-blue-300"
+                      dangerouslySetInnerHTML={{
+                        __html: activeNotePreviewHtml
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* Bottom Footer Stats */}

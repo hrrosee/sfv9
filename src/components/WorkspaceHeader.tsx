@@ -28,6 +28,20 @@ import { UserProfilePopover } from './UserProfilePopover';
 import { UserAvatar } from './UserAvatar';
 import { WorkspaceItem, SectionItem } from '../types';
 
+export interface NotificationItem {
+  id: string;
+  title: string;
+  time: string;
+  read: boolean;
+  type?: 'focus' | 'reminders' | 'system';
+  description?: string;
+  actionTarget?: {
+    type: 'circular' | 'task' | 'recycle' | 'url';
+    id?: string;
+    extra?: any;
+  };
+}
+
 export interface WorkspaceHeaderProps {
   setTooltipData: (data: any) => void;
   isWorkspaceDropdownOpen: boolean;
@@ -56,11 +70,13 @@ export interface WorkspaceHeaderProps {
   isNotificationPanelOpen: boolean;
   setIsNotificationPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   unreadNotifCount: number;
-  notifications: any[];
-  setNotifications: React.Dispatch<React.SetStateAction<any[]>>;
+  notifications: NotificationItem[];
+  setNotifications: React.Dispatch<React.SetStateAction<NotificationItem[]>>;
   notifFilter: 'all' | 'focus' | 'reminders';
   setNotifFilter: (filter: 'all' | 'focus' | 'reminders') => void;
   handleToggleDeviceNotifications: () => void;
+  onNotificationClick?: (notification: NotificationItem) => void;
+  onDismissNotification?: (id: string) => void;
   currentUser: any;
   profileMenuTarget: string | null;
   setProfileMenuTarget: React.Dispatch<React.SetStateAction<string | null>>;
@@ -107,6 +123,8 @@ export function WorkspaceHeader({
   notifFilter,
   setNotifFilter,
   handleToggleDeviceNotifications,
+  onNotificationClick,
+  onDismissNotification,
   currentUser,
   profileMenuTarget,
   setProfileMenuTarget,
@@ -130,7 +148,7 @@ export function WorkspaceHeader({
         MozUserSelect: 'none',
         msUserSelect: 'none',
       }}
-      className="no-copy-header sticky top-0 z-40 shrink-0 h-[56px] sm:h-[60px] min-h-[56px] px-3.5 sm:px-6 bg-white/80 dark:bg-[#090D16]/80 backdrop-blur-md border-b border-slate-200/70 dark:border-white/[0.06] flex items-center justify-between gap-2 sm:gap-4 select-none w-full [&_*]:select-none"
+      className="no-copy-header sticky top-0 z-40 shrink-0 h-[56px] sm:h-[60px] min-h-[56px] px-3.5 sm:px-6 bg-white/85 dark:bg-[#090D16]/85 backdrop-blur-[20px] border-b border-slate-200/70 dark:border-white/[0.06] flex items-center justify-between gap-2 sm:gap-4 select-none w-full [&_*]:select-none"
     >
       {/* LEFT: Mobile Hamburger + Premium Minimalist Text Breadcrumb */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 workspace-dropdown-container relative z-20">
@@ -459,14 +477,14 @@ export function WorkspaceHeader({
                   {[
                     { id: 'all', label: 'All', count: notifications.length },
                     {
-                      id: 'focus',
-                      label: 'Study & Focus ⏱️',
-                      count: notifications.filter((n) => n.type === 'focus').length,
+                      id: 'reminders',
+                      label: 'Deadlines & Reminders ⏰',
+                      count: notifications.filter((n) => n.type === 'reminders').length,
                     },
                     {
-                      id: 'reminders',
-                      label: 'Reminders 📌',
-                      count: notifications.filter((n) => n.type === 'reminders').length,
+                      id: 'focus',
+                      label: 'System & Alerts 🛡️',
+                      count: notifications.filter((n) => n.type === 'system').length,
                     },
                   ].map((tab) => (
                     <button
@@ -495,8 +513,8 @@ export function WorkspaceHeader({
                 <div className="flex-1 sm:max-h-[300px] overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
                   {(() => {
                     const filteredList = notifications.filter((n) => {
-                      if (notifFilter === 'focus') return n.type === 'focus';
                       if (notifFilter === 'reminders') return n.type === 'reminders';
+                      if (notifFilter === 'focus') return n.type === 'system' || n.type === 'focus';
                       return true;
                     });
 
@@ -560,32 +578,61 @@ export function WorkspaceHeader({
                             setNotifications((prev) =>
                               prev.map((item) => (item.id === n.id ? { ...item, read: true } : item))
                             );
+                            if (onNotificationClick) {
+                              onNotificationClick(n);
+                            }
                           }}
-                          className={`p-3.5 sm:p-3 flex items-start gap-3 transition-colors cursor-pointer ${
+                          className={`p-3.5 sm:p-3 flex items-start gap-3 transition-all cursor-pointer relative group ${
                             !n.read ? 'bg-[var(--primary-light)]/40 dark:bg-[var(--primary-dark-bg)]/40 hover:bg-[var(--primary-light)]/70 dark:hover:bg-[var(--primary-dark-bg)]/70' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
                           }`}
                         >
                           <div className={`mt-0.5 p-2 rounded-xl shrink-0 ${badgeStyle}`}>
                             <IconComponent className="w-4 h-4" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p
-                              className={`text-xs leading-snug ${
-                                !n.read ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium text-slate-600 dark:text-slate-400'
-                              }`}
-                            >
-                              {n.title}
-                            </p>
+                          <div className="flex-1 min-w-0 pr-6">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p
+                                className={`text-xs leading-snug ${
+                                  !n.read ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {n.title}
+                              </p>
+                              {n.actionTarget && (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400">
+                                  Jump to ➔
+                                </span>
+                              )}
+                            </div>
                             {n.description && (
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
+                              <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
                                 {n.description}
                               </p>
                             )}
-                            <span className="text-[9.5px] font-medium text-slate-400 dark:text-slate-500 mt-1 block font-mono">
-                              {n.time}
-                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[9.5px] font-medium text-slate-400 dark:text-slate-500 font-mono">
+                                {n.time}
+                              </span>
+                              {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" />}
+                            </div>
                           </div>
-                          {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--primary)] mt-1 shrink-0 shadow-2xs" />}
+
+                          {/* Dismiss Single Notification Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onDismissNotification) {
+                                onDismissNotification(n.id);
+                              } else {
+                                setNotifications((prev) => prev.filter((item) => item.id !== n.id));
+                              }
+                            }}
+                            className="absolute right-2.5 top-2.5 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-70 sm:opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Dismiss notification"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       );
                     });

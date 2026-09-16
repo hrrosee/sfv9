@@ -34,6 +34,10 @@ interface UseAuthSyncProps {
   setNotes: React.Dispatch<React.SetStateAction<any[]>>;
   standaloneTasks: any[];
   setStandaloneTasks: React.Dispatch<React.SetStateAction<any[]>>;
+  jobCirculars?: any[];
+  setJobCirculars?: React.Dispatch<React.SetStateAction<any[]>>;
+  deletedJobCirculars?: any[];
+  setDeletedJobCirculars?: React.Dispatch<React.SetStateAction<any[]>>;
   userSettings: any;
   setUserSettings: React.Dispatch<React.SetStateAction<any>>;
   showToast: (message: string) => void;
@@ -66,6 +70,10 @@ export function useAuthSync({
   setNotes,
   standaloneTasks,
   setStandaloneTasks,
+  jobCirculars = [],
+  setJobCirculars,
+  deletedJobCirculars = [],
+  setDeletedJobCirculars,
   userSettings,
   setUserSettings,
   showToast,
@@ -203,6 +211,16 @@ export function useAuthSync({
           if (cloudData.standaloneTasks) {
             setStandaloneTasks(cloudData.standaloneTasks);
           }
+          if (cloudData.jobCirculars && setJobCirculars) {
+            setJobCirculars((prev) => {
+              const cloudIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
+              const localOnly = prev.filter((c) => !cloudIds.has(c.id));
+              return [...(cloudData.jobCirculars || []), ...localOnly];
+            });
+          }
+          if (cloudData.deletedJobCirculars && setDeletedJobCirculars) {
+            setDeletedJobCirculars(cloudData.deletedJobCirculars);
+          }
           if (cloudData.userSettings) {
             setUserSettings((prev: any) => {
               const { theme: _cloudTheme, primaryColor: _cloudPrimaryColor, ...restCloudSettings } = cloudData.userSettings as any;
@@ -210,7 +228,7 @@ export function useAuthSync({
                 ...prev,
                 ...restCloudSettings,
                 theme: prev.theme || getInitialTheme(),
-                primaryColor: prev.primaryColor || _cloudPrimaryColor || getInitialAccentColor(),
+                primaryColor: prev.primaryColor || getInitialAccentColor(),
               };
             });
           }
@@ -230,6 +248,8 @@ export function useAuthSync({
             deletedTasks,
             deletedTopicNotes,
             deletedTopicLinks,
+            jobCirculars,
+            deletedJobCirculars,
             notes,
             standaloneTasks,
             userSettings,
@@ -284,6 +304,16 @@ export function useAuthSync({
         if (cloudData.standaloneTasks) {
           setStandaloneTasks(cloudData.standaloneTasks);
         }
+        if (cloudData.jobCirculars && setJobCirculars) {
+          setJobCirculars((prev) => {
+            const cloudIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
+            const localOnly = prev.filter((c) => !cloudIds.has(c.id));
+            return [...(cloudData.jobCirculars || []), ...localOnly];
+          });
+        }
+        if (cloudData.deletedJobCirculars && setDeletedJobCirculars) {
+          setDeletedJobCirculars(cloudData.deletedJobCirculars);
+        }
         if (cloudData.userSettings) {
           setUserSettings((prev: any) => {
             const { theme: _cloudTheme, primaryColor: _cloudPrimaryColor, ...restCloudSettings } = cloudData.userSettings as any;
@@ -320,6 +350,8 @@ export function useAuthSync({
       deletedTasks,
       deletedTopicNotes,
       deletedTopicLinks,
+      jobCirculars,
+      deletedJobCirculars,
       notes,
       standaloneTasks,
       userSettings,
@@ -335,6 +367,8 @@ export function useAuthSync({
     deletedTasks,
     deletedTopicNotes,
     deletedTopicLinks,
+    jobCirculars,
+    deletedJobCirculars,
     notes,
     standaloneTasks,
     userSettings,
@@ -366,6 +400,8 @@ export function useAuthSync({
       deletedTasks,
       deletedTopicNotes,
       deletedTopicLinks,
+      jobCirculars,
+      deletedJobCirculars,
       notes,
       standaloneTasks,
       userSettings,
@@ -384,6 +420,8 @@ export function useAuthSync({
     deletedTasks,
     deletedTopicNotes,
     deletedTopicLinks,
+    jobCirculars,
+    deletedJobCirculars,
     notes,
     standaloneTasks,
     userSettings,

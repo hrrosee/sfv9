@@ -30,10 +30,12 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  MoreVertical
+  MoreVertical,
+  Briefcase,
 } from 'lucide-react';
 import { StudyNote, Workspace } from './NotesStudio';
 import { soundManager } from '../utils/audio';
+import { DeletedJobCircularItem } from '../types';
 
 export interface DeletedWorkspaceItem {
   workspace: {
@@ -120,6 +122,7 @@ export interface RecycleBinStudioProps {
   deletedTasks?: DeletedTaskItem[];
   deletedTopicNotes?: DeletedTopicNoteItem[];
   deletedTopicLinks?: DeletedTopicLinkItem[];
+  deletedJobCirculars?: DeletedJobCircularItem[];
   workspaces: Workspace[];
   onRestoreWorkspace: (wsId: string) => void;
   onPermanentDeleteWorkspace: (wsId: string) => void;
@@ -135,6 +138,8 @@ export interface RecycleBinStudioProps {
   onPermanentDeleteTopicNote?: (noteId: string) => void;
   onRestoreTopicLink?: (linkId: string) => void;
   onPermanentDeleteTopicLink?: (linkId: string) => void;
+  onRestoreJobCircular?: (circularId: string) => void;
+  onPermanentDeleteJobCircular?: (circularId: string) => void;
   onEmptyRecycleBin: () => void;
   onClose: () => void;
   showToast: (msg: string) => void;
@@ -142,7 +147,7 @@ export interface RecycleBinStudioProps {
   onToggleSidebar?: () => void;
 }
 
-type RecycleItemType = 'all' | 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link';
+type RecycleItemType = 'all' | 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link' | 'circular';
 type SortOption = 'newest' | 'oldest' | 'alphabetical' | 'type';
 
 interface BreadcrumbPart {
@@ -152,7 +157,7 @@ interface BreadcrumbPart {
 
 interface UnifiedRecycleItem {
   id: string;
-  type: 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link';
+  type: 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link' | 'circular';
   title: string;
   originalLocation: string;
   locationPath: BreadcrumbPart[];
@@ -252,6 +257,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   deletedTasks = [],
   deletedTopicNotes = [],
   deletedTopicLinks = [],
+  deletedJobCirculars = [],
   workspaces,
   onRestoreWorkspace,
   onPermanentDeleteWorkspace,
@@ -267,6 +273,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   onPermanentDeleteTopicNote,
   onRestoreTopicLink,
   onPermanentDeleteTopicLink,
+  onRestoreJobCircular,
+  onPermanentDeleteJobCircular,
   onEmptyRecycleBin,
   onClose,
   showToast,
@@ -292,15 +300,53 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   const touchStartScrollTopRef = useRef<number>(0);
   const isPullingDownRef = useRef<boolean>(false);
   const heroOpenAtTouchStartRef = useRef<boolean>(true);
+  const isScrollingToTopRef = useRef<boolean>(false);
+
+  const handleScrollToTopAndOpenHero = () => {
+    const el = bodyScrollRef.current;
+    if (!el) {
+      setIsHeroOpen(true);
+      setPullDistance(0);
+      return;
+    }
+
+    if (el.scrollTop <= 2) {
+      setIsHeroOpen(true);
+      setPullDistance(0);
+      return;
+    }
+
+    isScrollingToTopRef.current = true;
+    el.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const startTime = Date.now();
+    const checkArrival = () => {
+      if (!bodyScrollRef.current || !isScrollingToTopRef.current) return;
+      const isAtTop = bodyScrollRef.current.scrollTop <= 2;
+      const isTimeout = Date.now() - startTime > 1000;
+
+      if (isAtTop || isTimeout) {
+        setIsHeroOpen(true);
+        setPullDistance(0);
+        setTimeout(() => {
+          isScrollingToTopRef.current = false;
+        }, 300);
+      } else {
+        requestAnimationFrame(checkArrival);
+      }
+    };
+
+    requestAnimationFrame(checkArrival);
+  };
 
   const getHeroOpacity = (): number => {
     if (isHeroOpen && pullDistance === 0) return 1;
     if (!isHeroOpen && pullDistance === 0) return 0;
 
     if (pullDirection === 'up') {
-      return Math.min(1, Math.max(0, (pullDistance - 50) / 140));
+      return Math.min(1, Math.max(0, (pullDistance - 36) / 84));
     } else {
-      const pct = (pullDistance / 204) * 100;
+      const pct = (pullDistance / 132) * 100;
       if (pct <= 0) return 0;
       if (pct <= 2) return Math.min(0.10, Math.max(0, pct * 0.05));
       if (pct <= 4) return 0.10 + (pct - 2) * 0.01;
@@ -625,8 +671,32 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
       });
     });
 
+    // 8. Job Circulars
+    (deletedJobCirculars || []).forEach(item => {
+      if (!item || !item.circular || !item.circular.id) return;
+      const parsedDate = parseItemDate(item.deletedAt, new Date(item.circular.updatedAt || item.circular.createdAt || 0).getTime());
+      const orgName = item.circular.organization || (item.circular.category === 'govt' ? 'Govt Job Circular' : 'Bank Job Circular');
+      const path: BreadcrumbPart[] = [{ label: orgName }];
+      if (item.circular.grade) path.push({ label: item.circular.grade });
+      if (item.circular.jobType) path.push({ label: item.circular.jobType, isHighlight: true });
+
+      items.push({
+        id: `circ-${item.circular.id}`,
+        type: 'circular',
+        title: item.circular.jobTitle || 'Untitled Circular',
+        originalLocation: path.map(p => p.label).join(' > '),
+        locationPath: path,
+        deletedAtDate: parsedDate,
+        deletedAtFormatted: formatDeletedOnDate(parsedDate, item.deletedAt),
+        daysLeft: calculateDaysLeft(parsedDate),
+        itemCountInfo: item.circular.category === 'govt' ? 'Government Job' : 'Banking Job',
+        rawData: item.circular,
+        originalIndex: items.length,
+      });
+    });
+
     return items;
-  }, [deletedWorkspaces, deletedSections, deletedTopics, deletedTasks, deletedNotes, deletedTopicNotes, deletedTopicLinks, workspaceMap]);
+  }, [deletedWorkspaces, deletedSections, deletedTopics, deletedTasks, deletedNotes, deletedTopicNotes, deletedTopicLinks, deletedJobCirculars, workspaceMap]);
 
   // Counts for tabs
   const workspaceCount = unifiedItems.filter(i => i.type === 'workspace').length;
@@ -635,6 +705,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
   const taskCount = unifiedItems.filter(i => i.type === 'task').length;
   const noteCount = unifiedItems.filter(i => i.type === 'note').length;
   const linkCount = unifiedItems.filter(i => i.type === 'link').length;
+  const circularCount = unifiedItems.filter(i => i.type === 'circular').length;
   const totalCount = unifiedItems.length;
 
   // Filtered & Sorted items
@@ -724,6 +795,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     } else if (item.type === 'link' && onRestoreTopicLink) {
       const linkId = item.rawData?.link?.id || item.rawData?.id || item.id.replace(/^tlink-/, '');
       if (linkId) onRestoreTopicLink(linkId);
+    } else if (item.type === 'circular' && onRestoreJobCircular) {
+      const circId = item.rawData?.id || item.id.replace(/^circ-/, '');
+      if (circId) onRestoreJobCircular(circId);
     }
     setSelectedIds(prev => prev.filter(id => id !== item.id));
     if (previewItem?.id === item.id) {
@@ -757,6 +831,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
     } else if (item.type === 'link' && onPermanentDeleteTopicLink) {
       const linkId = item.rawData?.link?.id || item.rawData?.id;
       if (linkId) onPermanentDeleteTopicLink(linkId);
+    } else if (item.type === 'circular' && onPermanentDeleteJobCircular) {
+      const circId = item.rawData?.id || item.id.replace(/^circ-/, '');
+      if (circId) onPermanentDeleteJobCircular(circId);
     }
     setSelectedIds(prev => prev.filter(id => id !== item.id));
     if (previewItem?.id === item.id) {
@@ -794,6 +871,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
         } else if (item.type === 'link' && onRestoreTopicLink) {
           const linkId = item.rawData?.link?.id || item.rawData?.id;
           if (linkId) onRestoreTopicLink(linkId);
+        } else if (item.type === 'circular' && onRestoreJobCircular) {
+          const circId = item.rawData?.id || item.id.replace(/^circ-/, '');
+          if (circId) onRestoreJobCircular(circId);
         }
       }
     });
@@ -834,6 +914,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
         } else if (item.type === 'link' && onPermanentDeleteTopicLink) {
           const linkId = item.rawData?.link?.id || item.rawData?.id;
           if (linkId) onPermanentDeleteTopicLink(linkId);
+        } else if (item.type === 'circular' && onPermanentDeleteJobCircular) {
+          const circId = item.rawData?.id || item.id.replace(/^circ-/, '');
+          if (circId) onPermanentDeleteJobCircular(circId);
         }
       }
     });
@@ -982,11 +1065,22 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
           </div>
         );
       }
+      case 'circular':
+        return (
+          <div
+            style={{
+              background: 'linear-gradient(135deg, var(--primary-grad-start, #0284C7), var(--primary-grad-end, #0369A1))',
+            }}
+            className="w-7 h-7 rounded-lg text-white shadow-3xs flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"
+          >
+            <Briefcase className="w-3.5 h-3.5 stroke-[2.2] text-white" />
+          </div>
+        );
     }
   };
 
   // Clean, ultra-compact and slim micro-pill badge matching reference
-  const renderTypeBadge = (type: 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link') => {
+  const renderTypeBadge = (type: 'workspace' | 'section' | 'topic' | 'task' | 'note' | 'link' | 'circular') => {
     switch (type) {
       case 'workspace':
         return (
@@ -1022,6 +1116,12 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
         return (
           <span className="inline-flex items-center justify-center px-1.5 py-[0.5px] rounded-full text-[9.5px] font-semibold bg-[#F5F3FF] text-[#7C3AED] border border-[#EDE9FE] shrink-0 leading-tight">
             Link
+          </span>
+        );
+      case 'circular':
+        return (
+          <span className="inline-flex items-center justify-center px-1.5 py-[0.5px] rounded-full text-[9.5px] font-semibold bg-[#F0F9FF] text-[#0284C7] border border-[#BAE6FD] shrink-0 leading-tight">
+            Circular
           </span>
         );
     }
@@ -1226,6 +1326,39 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
           </div>
         </div>
       )}
+
+      {/* Preview Type: Circular */}
+      {item.type === 'circular' && (
+        <div className="flex flex-col gap-2">
+          <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+            Job Circular Details
+          </span>
+          <div className="p-3 rounded-lg bg-sky-50/50 border border-sky-200/60 text-slate-800 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-sky-600 shrink-0" />
+              <span className="font-bold text-[13px]">{item.rawData?.jobTitle || item.title}</span>
+            </div>
+            <p className="text-[12px] text-slate-600 font-medium">
+              Organization: <strong className="text-slate-800">{item.rawData?.organization || item.originalLocation}</strong>
+            </p>
+            {item.rawData?.grade && (
+              <p className="text-[11px] text-slate-500">
+                Grade: <span className="font-semibold text-slate-700">{item.rawData.grade}</span> ({item.rawData.category === 'govt' ? 'Govt Job' : 'Bank Job'})
+              </p>
+            )}
+            {item.rawData?.dueDate && (
+              <p className="text-[11px] text-slate-500">
+                Deadline: <span className="font-semibold text-rose-600">{item.rawData.dueDate}</span>
+              </p>
+            )}
+            {item.rawData?.stage && (
+              <p className="text-[11px] text-slate-500">
+                Stage: <span className="font-semibold capitalize text-slate-700">{item.rawData.stage.replace('_', ' ')}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1238,10 +1371,16 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="flex-1 flex flex-col h-full bg-[#F8FAFC] overflow-hidden select-none"
+      className="flex-1 flex flex-col h-full bg-white dark:bg-slate-950 overflow-hidden select-none relative z-10"
     >
       {/* 1. TOP HEADER (Mobile Only: Hamburger Menu + Compact "Trash" title fading in when Hero is collapsed) */}
-      <header className="md:hidden shrink-0 h-[48px] bg-white border-b border-slate-200/80 px-4 flex items-center justify-between z-30 relative select-none">
+      <header
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
+        onSelectStart={(e) => e.preventDefault()}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+        className="no-copy-header md:hidden shrink-0 h-[48px] bg-white/85 dark:bg-slate-900/85 backdrop-blur-[20px] border-b border-slate-200/70 dark:border-white/[0.06] px-4 flex items-center justify-between z-30 relative select-none [&_*]:select-none"
+      >
         {/* Header Left: Hamburger / Back Button + Title */}
         <div className="flex items-center gap-2.5 min-w-0">
           <button
@@ -1259,19 +1398,22 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
             <Menu className="w-4 h-4 text-slate-700 stroke-[2.3]" />
           </button>
 
-          {/* Mobile Compact Title "Trash" (Smooth Fade-In when Hero is collapsed) */}
-          <div
-            className="flex items-center min-w-0 pointer-events-none transition-all duration-200"
+          {/* Mobile Compact Title "Trash" (Tap to scroll to top and open hero) */}
+          <button
+            type="button"
+            onClick={handleScrollToTopAndOpenHero}
+            className="flex items-center min-w-0 cursor-pointer active:opacity-70 text-left transition-all duration-200"
             style={{
               opacity: isHeroOpen ? (pullDistance > 0 ? Math.max(0, 1 - pullDistance / 40) : 0) : Math.min(1, 1 - pullDistance / 60),
               transform: `translateY(${isHeroOpen ? 6 : 0}px)`,
               display: isHeroOpen && pullDistance === 0 ? 'none' : 'flex',
+              pointerEvents: isHeroOpen ? 'none' : 'auto',
             }}
           >
             <h1 className="font-serif font-bold text-[15.5px] text-slate-900 tracking-tight truncate leading-none">
               Trash
             </h1>
-          </div>
+          </button>
         </div>
 
         {/* Header Right: 3-dot Action Menu (Only appears when Hero is closed, borderless) */}
@@ -1349,57 +1491,52 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
       </header>
 
       {/* 2. MAIN CONTENT STREAM (Centered max-w-6xl Container, Full Screen on Mobile) */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        <div
-          onScroll={(e) => {
-            const st = e.currentTarget.scrollTop;
-            setIsDesktopHeroScrolledPast(st > 80);
-          }}
-          className="flex-1 flex flex-col p-0 sm:p-6 min-w-0 overflow-hidden sm:overflow-y-auto"
-        >
-          <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col gap-3 sm:gap-4 min-h-0 sm:min-h-min">
-            
-            {/* 1. TOP HERO BANNER CARD (Collapsible on Mobile matching NotesStudio 1:1, Always Open on Desktop) */}
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white dark:bg-slate-950">
+        <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col min-h-0 sm:p-6">
+          {/* 1. TOP HERO BANNER CARD (Collapsible on Mobile matching SearchView motion 1:1, Original Trash Design) */}
+          <motion.div
+            initial={false}
+            animate={{
+              height: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 'auto' : (isHeroOpen ? 204 : pullDistance > 0 ? pullDistance : 0),
+              opacity: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 1 : getHeroOpacity(),
+            }}
+            transition={
+              pullDistance > 0
+                ? { duration: 0 }
+                : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+            }
+            className="sm:!h-auto sm:!opacity-100 overflow-hidden select-none shrink-0 transform-gpu"
+          >
             <motion.div
-              initial={false}
               animate={{
-                height: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 'auto' : (isHeroOpen ? 204 : pullDistance > 0 ? pullDistance : 0),
-                opacity: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 1 : getHeroOpacity(),
+                y: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 0 : (isHeroOpen ? 0 : pullDistance > 0 ? pullDistance - 204 : -204),
               }}
-              transition={{
-                height: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                opacity: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-              }}
-              className="overflow-hidden select-none shrink-0 sm:!h-auto sm:!opacity-100"
+              transition={
+                pullDistance > 0
+                  ? { duration: 0 }
+                  : { duration: 0.35, ease: [0.25, 1, 0.5, 1] }
+              }
+              className="sm:h-auto origin-top sm:!translate-y-0 transform-gpu"
             >
-              <motion.div
-                animate={{
-                  y: (typeof window !== 'undefined' && window.innerWidth >= 640) ? 0 : (isHeroOpen ? 0 : pullDistance > 0 ? pullDistance - 204 : -204),
-                }}
-                transition={{
-                  y: pullDistance > 0 ? { duration: 0 } : { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                }}
-                className="sm:!translate-y-0"
-              >
-                <div className="bg-[#FFF6F7] dark:bg-rose-950/20 border-none rounded-none sm:rounded-2xl p-4 sm:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-3xs select-none">
-                  {/* Left Side: Circular Glow Trash Icon + Title & Subtitle */}
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="relative shrink-0 flex items-center justify-center">
-                      <div className="w-[62px] h-[62px] rounded-full bg-gradient-to-tr from-[#E11D48] via-[#F43F5E] to-[#FB7185] flex items-center justify-center text-white shadow-md shadow-rose-500/25 ring-4 ring-[#FFE2E7] dark:ring-rose-950/50">
-                        <Trash2 className="w-7 h-7 stroke-[2.2]" />
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <h1 className="font-serif font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
-                        Trash Bin
-                      </h1>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 font-normal mt-1">
-                        Items in trash will be automatically deleted after <span className="text-[#E11D48] dark:text-rose-400 font-bold">30 days</span>.
-                      </p>
+              <div className="p-4 sm:p-4 sm:pb-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 select-none">
+                {/* Left Side: Circular Glow Trash Icon + Title & Subtitle */}
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="relative shrink-0 flex items-center justify-center">
+                    <div className="w-[56px] h-[56px] rounded-2xl bg-gradient-to-tr from-[#E11D48] via-[#F43F5E] to-[#FB7185] flex items-center justify-center text-white shadow-md shadow-rose-500/25">
+                      <Trash2 className="w-7 h-7 stroke-[2.2]" />
                     </div>
                   </div>
+                  <div className="min-w-0">
+                    <h1 className="font-serif font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
+                      Trash Bin
+                    </h1>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 font-normal mt-1">
+                      Items in trash will be automatically deleted after <span className="text-[#E11D48] dark:text-rose-400 font-bold">30 days</span>.
+                    </p>
+                  </div>
+                </div>
 
-                {/* Dynamic Animated Status & Actions Area with Sequential mode="wait" transition */}
+                {/* Dynamic Animated Status & Actions Area */}
                 <AnimatePresence mode="wait">
                   {selectedIds.length === 0 ? (
                     <motion.div
@@ -1410,9 +1547,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                       transition={{ duration: 0.1 }}
                       className="flex flex-col sm:flex-row items-center justify-center sm:justify-end gap-2.5 sm:gap-3.5 w-full xl:w-auto shrink-0"
                     >
-                      {/* 2-Part Stats Pill Card (Exact fixed height h-[42px]) */}
-                      <div className="bg-white dark:bg-slate-900 border border-[#FFE2E7] dark:border-slate-800 rounded-xl px-4 h-[42px] min-h-[42px] flex items-center justify-around sm:justify-center gap-4 sm:gap-6 shadow-3xs w-full sm:w-auto shrink-0">
-                        {/* 1. Total Items Count */}
+                      {/* 2-Part Stats Pill Card */}
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-4 h-[42px] min-h-[42px] flex items-center justify-around sm:justify-center gap-4 sm:gap-6 shadow-3xs w-full sm:w-auto shrink-0">
                         <div className="flex flex-col items-center justify-center text-center flex-1 sm:flex-initial min-w-[54px]">
                           <div className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-none">{totalCount}</div>
                           <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium leading-none mt-1">Total items</div>
@@ -1420,7 +1556,6 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
 
                         <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800" />
 
-                        {/* 2. Expiring Soon (< 7 days) */}
                         <div className="flex flex-col items-center justify-center text-center flex-1 sm:flex-initial min-w-[62px]">
                           <div className={`text-xs font-bold leading-none ${expiringSoonCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
                             {expiringSoonCount}
@@ -1429,7 +1564,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                         </div>
                       </div>
 
-                      {/* Normal Action Buttons (Restore all & Empty bin) */}
+                      {/* Normal Action Buttons */}
                       <div className="flex items-center justify-center gap-2 w-full sm:w-auto shrink-0">
                         <button
                           type="button"
@@ -1464,7 +1599,6 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                       transition={{ duration: 0.1 }}
                       className="flex flex-col sm:flex-row items-center justify-center sm:justify-end gap-2.5 sm:gap-3.5 w-full xl:w-auto shrink-0"
                     >
-                      {/* Selected Count Pill Card (Exact matching height h-[42px]) */}
                       <div className="bg-[#FFF1F2] dark:bg-rose-950/40 border border-[#FECDD3] dark:border-rose-900/50 rounded-xl px-4 h-[42px] min-h-[42px] flex items-center justify-center gap-2 shadow-3xs w-full sm:w-auto shrink-0 select-none">
                         <span className="w-2 h-2 rounded-full bg-[#E11D48] animate-pulse shrink-0" />
                         <span className="text-xs font-bold text-[#E11D48] dark:text-rose-400 whitespace-nowrap">
@@ -1494,12 +1628,13 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     </motion.div>
                   )}
                 </AnimatePresence>
-                </div>
-              </motion.div>
+              </div>
             </motion.div>
+          </motion.div>
+
 
             {/* 2, 3 & 4. STICKY SEARCH, SORT, TABS & TABLE HEADER */}
-            <div className="sticky top-0 sm:top-[-24px] z-20 bg-[#F8FAFC] dark:bg-slate-950 px-3.5 sm:px-0 pt-2 pb-0 sm:pt-3 sm:pb-0 flex flex-col gap-2.5 sm:gap-3 transition-all shrink-0">
+            <div className="sticky top-0 sm:top-[-24px] z-20 bg-white dark:bg-slate-950 px-3.5 sm:px-0 pt-2 pb-0 sm:pt-3 sm:pb-0 flex flex-col gap-2.5 sm:gap-3 transition-all shrink-0">
               {/* 2. SEARCH & SORT ROW (1:1 Reference matching image 1) */}
               <div className="flex items-center justify-between gap-3">
                 {/* Search Bar with Alt + F shortcut badge & 1/N Match Navigation */}
@@ -1648,6 +1783,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                   { id: 'task' as RecycleItemType, label: 'Tasks', count: taskCount },
                   { id: 'note' as RecycleItemType, label: 'Notes', count: noteCount },
                   { id: 'link' as RecycleItemType, label: 'Links', count: linkCount },
+                  { id: 'circular' as RecycleItemType, label: 'Circulars', count: circularCount },
                 ].map((tab, idx) => {
                   const isActive = activeTab === tab.id;
                   return (
@@ -1689,13 +1825,13 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
 
               {/* 4. STICKY TABLE HEADER (Fixed gap from tabs, stays pinned at top with search & tabs) */}
               {filteredAndSortedItems.length > 0 && (
-                <div className="bg-white border-y sm:border border-slate-200/80 rounded-none sm:rounded-t-xl overflow-hidden shadow-2xs -mx-3.5 sm:mx-0">
+                <div className="bg-white dark:bg-slate-900 border-y sm:border border-slate-200/80 dark:border-slate-800 rounded-none sm:rounded-t-xl overflow-hidden shadow-2xs -mx-3.5 sm:mx-0">
                   <div
                     ref={headerScrollRef}
                     onScroll={handleHeaderScroll}
-                    className="overflow-x-auto no-scrollbar bg-white"
+                    className="overflow-x-auto no-scrollbar bg-white dark:bg-slate-900"
                   >
-                    <table className="w-full text-left border-separate border-spacing-0 min-w-0 sm:min-w-[760px] bg-white table-fixed">
+                    <table className="w-full text-left border-separate border-spacing-0 min-w-0 sm:min-w-[760px] bg-white dark:bg-slate-900 table-fixed">
                       <colgroup>
                         <col className="w-[36px] sm:w-[42px]" />
                         <col className="w-auto" />
@@ -1704,15 +1840,15 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                         <col className="w-[84px] sm:w-[100px]" />
                       </colgroup>
                       <thead>
-                        <tr className="bg-white text-xs font-semibold text-slate-700 select-none">
-                          <th className="py-3 pl-3.5 sm:pl-4 pr-1 sm:pr-1.5 w-[36px] sm:w-[42px] bg-white">
+                        <tr className="bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300 select-none">
+                          <th className="py-3 pl-3.5 sm:pl-4 pr-1 sm:pr-1.5 w-[36px] sm:w-[42px] bg-white dark:bg-slate-900">
                             <button
                               type="button"
                               onClick={handleToggleSelectAll}
                               className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
                                 isAllSelected || selectedIds.length > 0
                                   ? 'bg-[#E11D48] border-[#E11D48] text-white'
-                                  : 'border-slate-300 bg-white hover:border-slate-400'
+                                  : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'
                               }`}
                               title={
                                 selectedIds.length > 0
@@ -1727,10 +1863,10 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                               ) : null}
                             </button>
                           </th>
-                          <th className="py-3 pl-2 sm:pl-2.5 pr-2 sm:pr-3 font-semibold text-slate-700 bg-white">Item & Origin</th>
-                          <th className="hidden sm:table-cell py-3 px-3 font-semibold text-slate-700 w-[200px] bg-white">Deleted on</th>
-                          <th className="hidden sm:table-cell py-3 px-3 font-semibold text-slate-700 w-[110px] text-center bg-white">Days left</th>
-                          <th className="py-3 pr-2.5 sm:px-3 font-semibold text-slate-700 w-[84px] sm:w-[100px] text-center bg-white">Actions</th>
+                          <th className="py-3 pl-2 sm:pl-2.5 pr-2 sm:pr-3 font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900">Item & Origin</th>
+                          <th className="hidden sm:table-cell py-3 px-3 font-semibold text-slate-700 dark:text-slate-300 w-[200px] bg-white dark:bg-slate-900">Deleted on</th>
+                          <th className="hidden sm:table-cell py-3 px-3 font-semibold text-slate-700 dark:text-slate-300 w-[110px] text-center bg-white dark:bg-slate-900">Days left</th>
+                          <th className="py-3 pr-2.5 sm:px-3 font-semibold text-slate-700 dark:text-slate-300 w-[84px] sm:w-[100px] text-center bg-white dark:bg-slate-900">Actions</th>
                         </tr>
                       </thead>
                     </table>
@@ -1745,6 +1881,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
               <div
                 ref={bodyScrollRef}
                 onTouchStart={(e) => {
+                  isScrollingToTopRef.current = false;
                   touchStartYRef.current = e.touches[0]?.clientY ?? 0;
                   touchStartTimeRef.current = Date.now();
                   const st = bodyScrollRef.current?.scrollTop ?? 0;
@@ -1758,18 +1895,26 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                   const deltaY = currentY - touchStartYRef.current;
                   const st = bodyScrollRef.current?.scrollTop ?? 0;
 
-                  // Only pull hero down if touch gesture STARTED when list was at top (scrollTop <= 2)
-                  if (!heroOpenAtTouchStartRef.current && deltaY > 0) {
-                    if (touchStartScrollTopRef.current <= 2 && st <= 2) {
-                      setPullDirection('down');
-                      const pull = Math.min(204, deltaY * 0.55);
-                      setPullDistance(pull);
-                    }
-                  } else if (heroOpenAtTouchStartRef.current && deltaY < 0) {
-                    if (st <= 2) {
+                  // If touch gesture STARTED when hero was open, ONLY manipulate hero height, never scroll list!
+                  if (heroOpenAtTouchStartRef.current) {
+                    if (deltaY < 0) {
                       setPullDirection('up');
                       if (isHeroOpen) setIsHeroOpen(false);
                       const pull = Math.max(0, 204 + (deltaY * 0.55));
+                      setPullDistance(pull);
+                    }
+                    // Lock internal list scroll strictly to 0 during hero closing gesture!
+                    if (bodyScrollRef.current) {
+                      bodyScrollRef.current.scrollTop = 0;
+                    }
+                    return;
+                  }
+
+                  // Pull hero down if scrolling downwards when near top
+                  if (!heroOpenAtTouchStartRef.current && deltaY > 0) {
+                    if (touchStartScrollTopRef.current <= 2 && st <= 2) {
+                      setPullDirection('down');
+                      const pull = Math.min(132, deltaY * 0.55);
                       setPullDistance(pull);
                     }
                   }
@@ -1787,10 +1932,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                   }
 
                   if (!heroOpenAtTouchStartRef.current) {
-                    // Was closed: ONLY trigger hero open if touch gesture STARTED when list was AT TOP (touchStartScrollTop <= 2)
                     if (touchStartScrollTopRef.current <= 2) {
                       const isFastFlickDown = velocityY > 0.35 && deltaY > 15;
-                      if (pullDistance >= 60 || isFastFlickDown) {
+                      if (pullDistance >= 61 || deltaY >= 61 || isFastFlickDown) {
                         setIsHeroOpen(true);
                       } else {
                         setIsHeroOpen(false);
@@ -1798,10 +1942,10 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     }
                     setPullDistance(0);
                   } else {
-                    // Was open:
+                    // Was open at start of touch:
                     if (deltaY < 0) {
                       const isFastFlickUp = velocityY < -0.35 && deltaY < -15;
-                      if (pullDistance < 130 || isFastFlickUp) {
+                      if (pullDistance <= 143 || Math.abs(deltaY) >= 61 || isFastFlickUp) {
                         setIsHeroOpen(false);
                       } else {
                         setIsHeroOpen(true);
@@ -1810,26 +1954,45 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                       setIsHeroOpen(true);
                     }
                     setPullDistance(0);
+                    if (bodyScrollRef.current) {
+                      bodyScrollRef.current.scrollTop = 0;
+                    }
                   }
                 }}
                 onScroll={(e) => {
+                  if (isScrollingToTopRef.current) return;
                   const st = e.currentTarget.scrollTop;
                   handleBodyScroll();
-                  if (isHeroOpen && st > 8) {
-                    setPullDirection('up');
-                    setIsHeroOpen(false);
-                    setPullDistance(0);
+
+                  // Desktop view: never lock or reset scroll!
+                  if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+                    setIsDesktopHeroScrolledPast(st > 40);
+                    return;
+                  }
+
+                  // Mobile only: If hero was open at touch start or hero is currently open/animating, lock list scrollTop to 0!
+                  if (isHeroOpen || pullDistance > 0 || heroOpenAtTouchStartRef.current) {
+                    if (st > 0) {
+                      e.currentTarget.scrollTop = 0;
+                    }
+                    if (st > 4) {
+                      setPullDirection('up');
+                      setIsHeroOpen(false);
+                      setPullDistance(0);
+                    }
                   }
                 }}
-                className="bg-white border border-slate-200/80 rounded-xl shadow-xs p-12 flex flex-col items-center justify-center text-center flex-1 overflow-y-auto"
+                className={`bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-xs p-12 flex flex-col items-center justify-center text-center flex-1 overscroll-y-contain ${
+                  (!isHeroOpen && pullDistance === 0) ? 'overflow-y-auto' : 'overflow-hidden sm:overflow-y-auto'
+                }`}
               >
-                <div className="w-14 h-14 rounded-2xl bg-rose-50 flex items-center justify-center text-[#E11D48] mb-3 border border-rose-100 shadow-3xs">
+                <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 flex items-center justify-center text-[#E11D48] mb-3 border border-rose-100 dark:border-rose-900/50 shadow-3xs">
                   <Trash2 className="w-7 h-7 stroke-[1.8]" />
                 </div>
-                <h3 className="font-serif font-bold text-base text-slate-800 mb-1">
+                <h3 className="font-serif font-bold text-base text-slate-800 dark:text-slate-100 mb-1">
                   {searchQuery ? 'No matching deleted items' : 'Recycle Bin is Empty'}
                 </h3>
-                <p className="text-xs text-slate-500 mb-4 leading-relaxed max-w-sm">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed max-w-sm">
                   {searchQuery
                     ? 'Try searching with a different keyword or change active filter tab.'
                     : 'Items moved to recycle bin will safely appear here. You can restore or permanently delete them at any time.'}
@@ -1838,7 +2001,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                   >
                     Clear Search
                   </button>
@@ -1846,7 +2009,7 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
               </div>
             ) : (
               /* Clean Table Body Card Container (Flush with Header, Items scroll under header - Full width on Mobile) */
-              <div className="bg-white border-b sm:border-x border-slate-200/80 rounded-none sm:rounded-b-xl overflow-hidden shadow-xs -mt-3 sm:-mt-4 flex-1 flex flex-col min-h-0">
+              <div className="bg-white dark:bg-slate-900 border-b sm:border-x border-slate-200/80 dark:border-slate-800 rounded-none sm:rounded-b-xl overflow-hidden shadow-xs flex-1 flex flex-col min-h-0">
                 <div
                   ref={bodyScrollRef}
                   onTouchStart={(e) => {
@@ -1863,18 +2026,25 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     const deltaY = currentY - touchStartYRef.current;
                     const st = bodyScrollRef.current?.scrollTop ?? 0;
 
-                    // Only pull hero down if touch gesture STARTED when list was at top (scrollTop <= 2)
+                    if (heroOpenAtTouchStartRef.current) {
+                      if (e.cancelable) e.preventDefault();
+                      if (deltaY < 0) {
+                        setPullDirection('up');
+                        if (isHeroOpen) setIsHeroOpen(false);
+                        const pull = Math.max(0, 204 + (deltaY * 0.55));
+                        setPullDistance(pull);
+                      }
+                      if (bodyScrollRef.current) {
+                        bodyScrollRef.current.scrollTop = 0;
+                      }
+                      return;
+                    }
+
+                    // Pull hero down if scrolling downwards when near the top
                     if (!heroOpenAtTouchStartRef.current && deltaY > 0) {
                       if (touchStartScrollTopRef.current <= 2 && st <= 2) {
                         setPullDirection('down');
                         const pull = Math.min(204, deltaY * 0.55);
-                        setPullDistance(pull);
-                      }
-                    } else if (heroOpenAtTouchStartRef.current && deltaY < 0) {
-                      if (st <= 2) {
-                        setPullDirection('up');
-                        if (isHeroOpen) setIsHeroOpen(false);
-                        const pull = Math.max(0, 204 + (deltaY * 0.55));
                         setPullDistance(pull);
                       }
                     }
@@ -1892,10 +2062,10 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     }
 
                     if (!heroOpenAtTouchStartRef.current) {
-                      // Was closed: ONLY trigger hero open if touch gesture STARTED when list was AT TOP (touchStartScrollTop <= 2)
                       if (touchStartScrollTopRef.current <= 2) {
                         const isFastFlickDown = velocityY > 0.35 && deltaY > 15;
-                        if (pullDistance >= 60 || isFastFlickDown) {
+                        // 30% reveal threshold of 204px hero height is 61px
+                        if (pullDistance >= 61 || deltaY >= 61 || isFastFlickDown) {
                           setIsHeroOpen(true);
                         } else {
                           setIsHeroOpen(false);
@@ -1906,7 +2076,8 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                       // Was open:
                       if (deltaY < 0) {
                         const isFastFlickUp = velocityY < -0.35 && deltaY < -15;
-                        if (pullDistance < 130 || isFastFlickUp) {
+                        // 30% collapse threshold of 204px hero height means remaining pullDistance <= 143px or Math.abs(deltaY) >= 61px
+                        if (pullDistance <= 143 || Math.abs(deltaY) >= 61 || isFastFlickUp) {
                           setIsHeroOpen(false);
                         } else {
                           setIsHeroOpen(true);
@@ -1918,16 +2089,30 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     }
                   }}
                   onScroll={(e) => {
+                    if (isScrollingToTopRef.current) return;
                     const st = e.currentTarget.scrollTop;
                     handleBodyScroll();
-                    if (isHeroOpen && st > 8) {
-                      setPullDirection('up');
-                      setIsHeroOpen(false);
-                      setPullDistance(0);
+
+                    // Desktop view: never lock or reset scroll position! Update scroll state.
+                    if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+                      setIsDesktopHeroScrolledPast(st > 40);
+                      return;
+                    }
+
+                    // Mobile only: Lock list scroll strictly to top 0 until hero is 100% closed
+                    if (isHeroOpen || pullDistance > 0 || heroOpenAtTouchStartRef.current) {
+                      if (st > 0) {
+                        e.currentTarget.scrollTop = 0;
+                      }
+                      if (st > 4) {
+                        setPullDirection('up');
+                        setIsHeroOpen(false);
+                        setPullDistance(0);
+                      }
                     }
                   }}
-                  className={`overflow-x-auto bg-white flex-1 min-h-0 sm:flex-initial sm:min-h-min ${
-                    (!isHeroOpen && pullDistance === 0) ? 'overflow-y-auto' : 'overflow-hidden sm:overflow-y-visible'
+                  className={`overflow-x-auto bg-white dark:bg-slate-900 flex-1 min-h-0 overscroll-y-contain custom-scrollbar ${
+                    (!isHeroOpen && pullDistance === 0) ? 'overflow-y-auto' : 'overflow-hidden sm:overflow-y-auto'
                   }`}
                 >
                   <table className="w-full text-left border-separate border-spacing-0 min-w-0 sm:min-w-[760px] bg-white dark:bg-slate-900 table-fixed">
@@ -2070,10 +2255,9 @@ export const RecycleBinStudio: React.FC<RecycleBinStudioProps> = ({
                     })}
                   </tbody>
                 </table>
-                </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Desktop Quick Preview Drawer (lg and above) */}

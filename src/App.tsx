@@ -281,7 +281,6 @@ import { TopicDetailsDrawer } from './components/TopicDetailsDrawer';
 import { CardTopicHeader } from './components/CardTopicHeader';
 import { SettingsModal } from './components/SettingsModal';
 import { ShortcutsAndGuideModal } from './components/ShortcutsAndGuideModal';
-import { AnalyticsStudio } from './components/AnalyticsStudio';
 import { AuthModal } from './components/AuthModal';
 import { UserProfilePopover } from './components/UserProfilePopover';
 import { EditProfileModal } from './components/EditProfileModal';
@@ -295,7 +294,7 @@ import { StreakPopover } from './components/StreakPopover';
 import { FloatingStudyTimer, ActiveStudyTimerSession, formatTimerClock } from './components/FloatingStudyTimer';
 import { triggerMilestoneNotificationAndVibrate } from './components/TopicDetailsDrawer';
 import { loadStreakData, recordDailyGoalAchieved, StreakData } from './utils/streakManager';
-import { UserSettings, StandaloneTask } from './types';
+import { UserSettings, StandaloneTask, JobCircularItem, DeletedJobCircularItem } from './types';
 import { useLongPress } from './hooks/useLongPress';
 import { soundManager } from './utils/audio';
 import { triggerMiniTaskConfetti, triggerTopicCompleteCelebration } from './utils/confetti';
@@ -308,11 +307,16 @@ import { WorkspaceMetricsBanner } from './components/WorkspaceMetricsBanner';
 import { SmartTopicGeneratorBanner } from './components/SmartTopicGeneratorBanner';
 import { TopicsCanvas } from './components/TopicsCanvas';
 import { AppSidebar } from './components/AppSidebar';
-import { NotesStudio } from './components/NotesStudio';
-import { SearchView } from './components/SearchView';
-import { RecycleBinStudio } from './components/RecycleBinStudio';
-import { TasksStudio } from './components/TasksStudio';
-import { LandingPage } from './components/LandingPage';
+
+// Dynamic Lazy-Loaded Heavy Studio Modules for Instant App Boot
+const AnalyticsStudio = React.lazy(() => import('./components/AnalyticsStudio').then(m => ({ default: m.AnalyticsStudio })));
+const NotesStudio = React.lazy(() => import('./components/NotesStudio').then(m => ({ default: m.NotesStudio })));
+const SearchView = React.lazy(() => import('./components/SearchView').then(m => ({ default: m.SearchView })));
+const RecycleBinStudio = React.lazy(() => import('./components/RecycleBinStudio').then(m => ({ default: m.RecycleBinStudio })));
+const TasksStudio = React.lazy(() => import('./components/TasksStudio').then(m => ({ default: m.TasksStudio })));
+const JobCircularStudio = React.lazy(() => import('./components/JobCircularStudio').then(m => ({ default: m.JobCircularStudio })));
+const LandingPage = React.lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
+import { ToastContainer } from './components/ToastContainer';
 
 // Custom Reorder Workspaces SVG Icon (Up Chevron + Middle Bar + Down Chevron)
 const ReorderWorkspacesIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -1626,6 +1630,11 @@ export function App() {
     read: boolean;
     type?: 'focus' | 'reminders' | 'system';
     description?: string;
+    actionTarget?: {
+      type: 'circular' | 'task' | 'recycle' | 'url';
+      id?: string;
+      extra?: any;
+    };
   }
   interface ToastData {
     message: string;
@@ -1642,8 +1651,7 @@ export function App() {
     }
   };
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => [
-    { id: 'notif-1', title: 'Welcome to StudyFlow Workspace!', time: 'Just now', read: false, type: 'system', description: 'Your focus dashboard and topic tracker are active.' },
-    { id: 'notif-2', title: 'Focus Check-in Timer Ready ⏱️', time: '5m ago', read: false, type: 'focus', description: 'Interval milestone alerts will keep your study sessions sharp.' }
+    { id: 'notif-1', title: 'Actionable Notification Inbox Ready', time: 'Just now', read: true, type: 'system', description: 'Important deadlines, circular expirations, and upcoming exam schedules will be listed here.' },
   ]);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState<boolean>(false);
   const [notifFilter, setNotifFilter] = useState<'all' | 'focus' | 'reminders'>('all');
@@ -1777,9 +1785,20 @@ export function App() {
       setToasts((prev) => prev.filter((t) => t.id !== newId));
     }, effectiveDuration);
 
-    // Exclude transient timer pause/resume events from polluting the notification panel history
-    const isExcludedFromPanel = /timer paused|timer resumed/i.test(message);
+    // Exclude noise, transient actions, routine UI updates from polluting notification panel:
+    // 1. Focus timer/check-ins/milestones
+    // 2. Goal / Streak changes
+    // 3. Theme / Appearance / Accent changes
+    // 4. Workspace / Section / Topic CRUD actions
+    // 5. Transient clipboard / copy actions
+    const isExcludedFromPanel = /(timer|focus|check-in|milestone|session|streak|goal|theme|accent|palette|color|workspace|section|topic|syllabus|copied|reset)/i.test(message);
     if (isExcludedFromPanel) {
+      return;
+    }
+
+    // Only allow actionable & critical items: Deadlines, Due dates, Circulars, Exam dates, Security/Recycle bin
+    const isActionable = /(due|overdue|deadline|exam|admit|circular|recycle|warning|alert|security|urgent)/i.test(message);
+    if (!isActionable) {
       return;
     }
 
@@ -1789,15 +1808,14 @@ export function App() {
       minute: '2-digit'
     });
 
-    const isStudy = /study|timer|focus|milestone|session|check-in/i.test(message);
-    const isReminder = /due|overdue|deadline|date|recycle/i.test(message);
+    const isReminder = /due|overdue|deadline|exam|circular/i.test(message);
 
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
       title: message,
       time: formattedTime,
       read: false,
-      type: isStudy ? 'focus' : isReminder ? 'reminders' : 'system'
+      type: isReminder ? 'reminders' : 'system'
     };
 
     setNotifications(prev => [newNotif, ...prev]);
@@ -1999,13 +2017,14 @@ export function App() {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [highlightedTopicId, setHighlightedTopicId] = useState<string | null>(null);
 
-  // --- Persistent View State (Workspace, Notes, Tasks, Trash, Search, Analytics) & URL Routing ---
+  // --- Persistent View State (Workspace, Notes, Tasks, Trash, Search, Analytics, Circulars) & URL Routing ---
   const initialActiveView = (() => {
     try {
       if (typeof window !== 'undefined') {
         const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
         if (path === '/tasks') return 'tasks';
         if (path === '/notes') return 'notes';
+        if (path === '/circulars' || path === '/jobs') return 'circulars';
         if (path === '/trash' || path === '/recycle-bin') return 'trash';
         if (path === '/search') return 'search';
         if (path === '/analytics') return 'analytics';
@@ -2015,12 +2034,12 @@ export function App() {
       if (!saved) return 'workspace';
       try {
         const parsed = JSON.parse(saved);
-        if (typeof parsed === 'string' && ['workspace', 'notes', 'tasks', 'trash', 'search', 'analytics'].includes(parsed)) {
-          return parsed as 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics';
+        if (typeof parsed === 'string' && ['workspace', 'notes', 'tasks', 'trash', 'search', 'analytics', 'circulars'].includes(parsed)) {
+          return parsed as 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics' | 'circulars';
         }
       } catch {}
-      if (['workspace', 'notes', 'tasks', 'trash', 'search', 'analytics'].includes(saved)) {
-        return saved as 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics';
+      if (['workspace', 'notes', 'tasks', 'trash', 'search', 'analytics', 'circulars'].includes(saved)) {
+        return saved as 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics' | 'circulars';
       }
       return 'workspace';
     } catch {
@@ -2068,6 +2087,246 @@ export function App() {
     localStorage.setItem('studyflow_notes', JSON.stringify(notes));
   }, [notes]);
 
+  // --- Dedicated Full-Page Job Circulars Studio State ---
+  const [isJobCircularsOpen, setIsJobCircularsOpen] = useState<boolean>(() => initialActiveView === 'circulars');
+  const [jobCirculars, setJobCirculars] = useState<JobCircularItem[]>(() =>
+    loadInitialData('studyflow_job_circulars', [
+      {
+        id: 'circular-sample-1',
+        jobTitle: 'Assistant Director (General)',
+        organization: 'Bangladesh Bank',
+        category: 'govt',
+        grade: '9th Grade',
+        scale: '22,000 - 53,060',
+        jobType: 'Permanent Full-time',
+        dueDate: '2026-10-15',
+        applicationFee: 'BDT 200',
+        stage: 'applied',
+        examDate: '2026-11-20',
+        examTime: '10:00 AM - 11:00 AM',
+        examVenue: 'Dhaka University Campus',
+        credentials: {
+          applicantName: 'Applicant',
+          userId: 'BB-AD-2026-9874',
+          password: '••••••••',
+          rollNumber: '104859',
+        },
+        attachments: [
+          {
+            id: 'att-1',
+            name: 'Official_Circular_BB_AD.pdf',
+            type: 'circular',
+            size: '1.2 MB',
+            uploadedAt: '2026-09-01',
+          }
+        ],
+        notes: 'Review Bengali literature and Bangladesh affairs specifically monetary policy.',
+        createdAt: '2026-09-01T10:00:00.000Z',
+        updatedAt: '2026-09-01T10:00:00.000Z',
+      },
+      {
+        id: 'circular-sample-2',
+        jobTitle: 'Senior Officer (General)',
+        organization: 'Sonali Bank PLC',
+        category: 'bank',
+        grade: '9th Grade',
+        scale: '22,000 - 53,060',
+        jobType: 'Banking Permanent',
+        dueDate: '2026-09-30',
+        applicationFee: 'BDT 200',
+        stage: 'not_applied',
+        credentials: {},
+        attachments: [],
+        createdAt: '2026-09-05T12:00:00.000Z',
+        updatedAt: '2026-09-05T12:00:00.000Z',
+      }
+    ])
+  );
+
+  const [deletedJobCirculars, setDeletedJobCirculars] = useState<DeletedJobCircularItem[]>(() =>
+    loadInitialData('studyflow_deleted_job_circulars', [])
+  );
+
+  useEffect(() => {
+    try {
+      // Safeguard: Ensure no large data URLs / Base64 sneak into localStorage
+      const safeJobCirculars = jobCirculars.map(c => ({
+        ...c,
+        attachments: (c.attachments || []).map(att => ({
+          ...att,
+          // If any legacy local base64 url exists, do not blow up localStorage quota
+          url: att.url?.startsWith('data:') ? '' : att.url
+        }))
+      }));
+      localStorage.setItem('studyflow_job_circulars', JSON.stringify(safeJobCirculars));
+    } catch (err) {
+      console.warn('Could not persist job circulars to localStorage quota:', err);
+    }
+  }, [jobCirculars]);
+
+  useEffect(() => {
+    try {
+      const safeDeleted = deletedJobCirculars.map(d => ({
+        ...d,
+        circular: {
+          ...d.circular,
+          attachments: (d.circular?.attachments || []).map(att => ({
+            ...att,
+            url: att.url?.startsWith('data:') ? '' : att.url
+          }))
+        }
+      }));
+      localStorage.setItem('studyflow_deleted_job_circulars', JSON.stringify(safeDeleted));
+    } catch (err) {
+      console.warn('Could not persist deleted job circulars to localStorage quota:', err);
+    }
+  }, [deletedJobCirculars]);
+
+  // --- Automated Background Deadline & Exam Checker (Runs at most once per 6 hours, ZERO render overhead) ---
+  useEffect(() => {
+    try {
+      const LAST_CHECK_KEY = 'studyflow_last_deadline_check';
+      const lastCheck = localStorage.getItem(LAST_CHECK_KEY);
+      const nowTime = Date.now();
+      const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+
+      // Skip if already checked within 6 hours to prevent re-calling/re-rendering
+      if (lastCheck && nowTime - parseInt(lastCheck, 10) < SIX_HOURS_MS) {
+        return;
+      }
+      localStorage.setItem(LAST_CHECK_KEY, nowTime.toString());
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const urgentNotifications: NotificationItem[] = [];
+
+      // Helper to dispatch browser push notification if permitted
+      const sendPushNotification = (title: string, body: string) => {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(title, {
+              body,
+              icon: '/favicon.ico',
+            });
+          } catch {
+            // Safe fallback
+          }
+        }
+      };
+
+      // 1. Check Job Circulars Deadlines & Upcoming Exams
+      if (Array.isArray(jobCirculars)) {
+        jobCirculars.forEach((job) => {
+          // If stage is 'applied' or beyond, DEADLINE notification is inactive (muted)
+          // Only trigger deadline alerts when stage === 'not_applied'
+          if (job.applicationDeadline && job.stage === 'not_applied') {
+            const deadlineDate = new Date(job.applicationDeadline);
+            const todayDate = new Date(todayStr);
+            const diffDays = Math.ceil((deadlineDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+            // Alert 3 days before deadline (diffDays: 3, 2, 1, 0)
+            if (diffDays >= 0 && diffDays <= 3) {
+              const notifTitle = diffDays === 0
+                ? `🚨 Last Chance: Apply Today for ${job.jobTitle}`
+                : `⏰ Deadline Alert (${diffDays} days left): ${job.jobTitle}`;
+              const notifDesc = `${job.organization} — Application deadline is ${job.applicationDeadline}. Apply before it closes!`;
+
+              urgentNotifications.push({
+                id: `auto-circ-dl-${job.id}-${todayStr}`,
+                title: notifTitle,
+                time: '6h Scheduled Alert',
+                read: false,
+                type: 'reminders',
+                description: notifDesc,
+                actionTarget: {
+                  type: 'circular',
+                  id: job.id
+                }
+              });
+
+              // Send browser push notification every 6 hours
+              sendPushNotification(notifTitle, notifDesc);
+            }
+          }
+
+          // Check declared exam date (7 days before exam date, daily once)
+          if (job.examDate) {
+            const examDateObj = new Date(job.examDate);
+            const todayDate = new Date(todayStr);
+            const diffDays = Math.ceil((examDateObj.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+            // Alert 7 days before exam date (diffDays: 7, 6, 5, 4, 3, 2, 1, 0)
+            if (diffDays >= 0 && diffDays <= 7) {
+              const LAST_EXAM_NOTIF_KEY = `studyflow_last_exam_notif_${job.id}_${todayStr}`;
+              const alreadyNotifiedToday = localStorage.getItem(LAST_EXAM_NOTIF_KEY);
+
+              const notifTitle = diffDays === 0
+                ? `🎯 Exam Today: ${job.jobTitle}`
+                : diffDays === 1
+                ? `🎫 Exam Tomorrow: ${job.jobTitle}`
+                : `📅 Exam in ${diffDays} days: ${job.jobTitle}`;
+              const notifDesc = `Exam on ${job.examDate}${job.examVenue ? ` at ${job.examVenue}` : ''}. Review your notes & admit card.`;
+
+              urgentNotifications.push({
+                id: `auto-circ-exam-${job.id}-${todayStr}`,
+                title: notifTitle,
+                time: 'Daily Exam Alert',
+                read: false,
+                type: 'reminders',
+                description: notifDesc,
+                actionTarget: {
+                  type: 'circular',
+                  id: job.id
+                }
+              });
+
+              // Daily once push notification
+              if (!alreadyNotifiedToday) {
+                sendPushNotification(notifTitle, notifDesc);
+                localStorage.setItem(LAST_EXAM_NOTIF_KEY, 'true');
+              }
+            }
+          }
+        });
+      }
+
+      // 2. Check Tasks Due Today / Overdue
+      if (Array.isArray(standaloneTasks)) {
+        standaloneTasks.forEach((task) => {
+          if (task.completed || !task.dueDate) return;
+          const taskDueDate = new Date(task.dueDate);
+          const todayDate = new Date(todayStr);
+          const diffDays = Math.ceil((taskDueDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          if (diffDays <= 0) {
+            urgentNotifications.push({
+              id: `auto-task-due-${task.id}-${todayStr}`,
+              title: diffDays === 0 ? `📌 Task Due Today: ${task.title}` : `⚠️ Task Overdue: ${task.title}`,
+              time: 'Scheduled Alert',
+              read: false,
+              type: 'reminders',
+              description: `Due date: ${task.dueDate}. Complete to maintain your streak!`,
+              actionTarget: {
+                type: 'task',
+                id: task.id
+              }
+            });
+          }
+        });
+      }
+
+      if (urgentNotifications.length > 0) {
+        setNotifications((prev) => {
+          const existingIds = new Set(prev.map((n) => n.id));
+          const newUnique = urgentNotifications.filter((n) => !existingIds.has(n.id));
+          if (newUnique.length === 0) return prev;
+          return [...newUnique, ...prev];
+        });
+      }
+    } catch {
+      // Safe fallback
+    }
+  }, [jobCirculars, standaloneTasks]);
+
   // --- Selected Topic for Right Progress Card & Details Drawer ---
   const [isRecycleBinOpen, setIsRecycleBinOpen] = useState<boolean>(() => initialActiveView === 'trash');
   const [isNewWorkspaceOpen, setIsNewWorkspaceOpen] = useState<boolean>(false);
@@ -2082,9 +2341,10 @@ export function App() {
 
   // Track and persist active view route to URL and localStorage
   useEffect(() => {
-    let currentView: 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics' = 'workspace';
+    let currentView: 'workspace' | 'notes' | 'tasks' | 'trash' | 'search' | 'analytics' | 'circulars' = 'workspace';
     if (isTasksPageOpen) currentView = 'tasks';
     else if (isNotesPageOpen) currentView = 'notes';
+    else if (isJobCircularsOpen) currentView = 'circulars';
     else if (isRecycleBinOpen) currentView = 'trash';
     else if (isSearchPageOpen) currentView = 'search';
     else if (isAnalyticsPageOpen) currentView = 'analytics';
@@ -2098,7 +2358,7 @@ export function App() {
         window.history.pushState({ view: currentView }, '', targetPath);
       }
     } catch {}
-  }, [isTasksPageOpen, isNotesPageOpen, isRecycleBinOpen, isSearchPageOpen, isAnalyticsPageOpen]);
+  }, [isTasksPageOpen, isNotesPageOpen, isJobCircularsOpen, isRecycleBinOpen, isSearchPageOpen, isAnalyticsPageOpen]);
 
   // Handle Browser Back and Forward Button navigation (popstate event)
   useEffect(() => {
@@ -2106,6 +2366,7 @@ export function App() {
       const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
       setIsTasksPageOpen(path === '/tasks');
       setIsNotesPageOpen(path === '/notes');
+      setIsJobCircularsOpen(path === '/circulars' || path === '/jobs');
       setIsRecycleBinOpen(path === '/trash' || path === '/recycle-bin');
       setIsSearchPageOpen(path === '/search');
       setIsAnalyticsPageOpen(path === '/analytics');
@@ -2684,9 +2945,6 @@ export function App() {
     setProfileMenuTarget(null);
     try {
       localStorage.removeItem('studyflow_cached_user');
-      if (typeof document !== 'undefined') {
-        document.documentElement.removeAttribute('data-accent');
-      }
     } catch {}
     await logoutUser();
     setCurrentUser(null);
@@ -2714,7 +2972,7 @@ export function App() {
         const cloudData = await fetchUserDataFromCloud(currentUser.uid);
         if (!isMounted) return;
 
-        if (cloudData && (cloudData.workspaces?.length || cloudData.topics?.length || cloudData.notes?.length)) {
+        if (cloudData && (cloudData.workspaces?.length || cloudData.topics?.length || cloudData.notes?.length || cloudData.jobCirculars?.length)) {
           // Cloud data exists: Sync into local state with safe non-destructive merging
           isCloudApplyingRef.current = true;
           if (cloudData.workspaces) setWorkspaces(cloudData.workspaces);
@@ -2734,6 +2992,14 @@ export function App() {
           if (cloudData.deletedTasks) setDeletedTasks(cloudData.deletedTasks);
           if (cloudData.deletedTopicNotes) setDeletedTopicNotes(cloudData.deletedTopicNotes);
           if (cloudData.deletedTopicLinks) setDeletedTopicLinks(cloudData.deletedTopicLinks);
+          if (cloudData.jobCirculars) {
+            setJobCirculars(prev => {
+              const cloudCircularIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
+              const localOnly = prev.filter(c => !cloudCircularIds.has(c.id));
+              return [...(cloudData.jobCirculars || []), ...localOnly];
+            });
+          }
+          if (cloudData.deletedJobCirculars) setDeletedJobCirculars(cloudData.deletedJobCirculars);
           if (cloudData.notes) {
             setNotes(prev => {
               const cloudNoteIds = new Set((cloudData.notes || []).map((n: any) => n.id));
@@ -2746,11 +3012,12 @@ export function App() {
           }
           if (cloudData.userSettings) {
             setUserSettings(prev => {
-              const { theme: _cloudTheme, ...restCloudSettings } = cloudData.userSettings as any;
+              const { theme: _cloudTheme, primaryColor: _cloudPrimaryColor, ...restCloudSettings } = cloudData.userSettings as any;
               return {
                 ...prev,
                 ...restCloudSettings,
-                theme: prev.theme || getInitialTheme()
+                theme: prev.theme || getInitialTheme(),
+                primaryColor: prev.primaryColor || getInitialAccentColor()
               };
             });
           }
@@ -2771,6 +3038,8 @@ export function App() {
             deletedTasks,
             deletedTopicNotes,
             deletedTopicLinks,
+            jobCirculars,
+            deletedJobCirculars,
             notes,
             standaloneTasks,
             userSettings
@@ -2813,6 +3082,14 @@ export function App() {
         if (cloudData.deletedTasks) setDeletedTasks(cloudData.deletedTasks);
         if (cloudData.deletedTopicNotes) setDeletedTopicNotes(cloudData.deletedTopicNotes);
         if (cloudData.deletedTopicLinks) setDeletedTopicLinks(cloudData.deletedTopicLinks);
+        if (cloudData.jobCirculars) {
+          setJobCirculars(prev => {
+            const cloudCircularIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
+            const localOnly = prev.filter(c => !cloudCircularIds.has(c.id));
+            return [...(cloudData.jobCirculars || []), ...localOnly];
+          });
+        }
+        if (cloudData.deletedJobCirculars) setDeletedJobCirculars(cloudData.deletedJobCirculars);
         if (cloudData.notes) {
           setNotes(prev => {
             const cloudNoteIds = new Set((cloudData.notes || []).map((n: any) => n.id));
@@ -2825,11 +3102,12 @@ export function App() {
         }
         if (cloudData.userSettings) {
           setUserSettings(prev => {
-            const { theme: _cloudTheme, ...restCloudSettings } = cloudData.userSettings as any;
+            const { theme: _cloudTheme, primaryColor: _cloudPrimaryColor, ...restCloudSettings } = cloudData.userSettings as any;
             return {
               ...prev,
               ...restCloudSettings,
-              theme: prev.theme || getInitialTheme()
+              theme: prev.theme || getInitialTheme(),
+              primaryColor: prev.primaryColor || getInitialAccentColor()
             };
           });
         }
@@ -2859,11 +3137,13 @@ export function App() {
       deletedTasks,
       deletedTopicNotes,
       deletedTopicLinks,
+      jobCirculars,
+      deletedJobCirculars,
       notes,
       standaloneTasks,
       userSettings
     };
-  }, [workspaces, workspaceSections, topics, deletedTopics, deletedWorkspaces, deletedNotes, deletedSections, deletedTasks, deletedTopicNotes, deletedTopicLinks, notes, standaloneTasks, userSettings]);
+  }, [workspaces, workspaceSections, topics, deletedTopics, deletedWorkspaces, deletedNotes, deletedSections, deletedTasks, deletedTopicNotes, deletedTopicLinks, jobCirculars, deletedJobCirculars, notes, standaloneTasks, userSettings]);
 
   // Immediate flush save to Firebase when browser is refreshed (F5) or closed
   useEffect(() => {
@@ -2891,13 +3171,15 @@ export function App() {
       deletedTasks,
       deletedTopicNotes,
       deletedTopicLinks,
+      jobCirculars,
+      deletedJobCirculars,
       notes,
       standaloneTasks,
       userSettings
     };
     latestDataRef.current = payload;
     saveUserDataToCloud(currentUser.uid, payload);
-  }, [currentUser, workspaces, workspaceSections, topics, deletedTopics, deletedWorkspaces, deletedNotes, deletedSections, deletedTasks, deletedTopicNotes, deletedTopicLinks, notes, standaloneTasks, userSettings]);
+  }, [currentUser, workspaces, workspaceSections, topics, deletedTopics, deletedWorkspaces, deletedNotes, deletedSections, deletedTasks, deletedTopicNotes, deletedTopicLinks, jobCirculars, deletedJobCirculars, notes, standaloneTasks, userSettings]);
 
   // Online / Offline Network Status Tracking
   useEffect(() => {
@@ -2937,6 +3219,10 @@ export function App() {
           setDeletedTopics(JSON.parse(e.newValue));
         } else if (e.key === 'studyflow_deleted_workspaces' && e.newValue) {
           setDeletedWorkspaces(JSON.parse(e.newValue));
+        } else if (e.key === 'studyflow_job_circulars' && e.newValue) {
+          setJobCirculars(JSON.parse(e.newValue));
+        } else if (e.key === 'studyflow_deleted_job_circulars' && e.newValue) {
+          setDeletedJobCirculars(JSON.parse(e.newValue));
         }
       } catch (err) {
         console.error('Multi-tab sync parse error:', err);
@@ -2987,6 +3273,20 @@ export function App() {
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
+      const isInsideNotesEditor = Boolean(
+        target && (
+          (target as any).isContentEditable ||
+          target.closest('[contenteditable="true"]') ||
+          target.closest('.note-preview-content') ||
+          (isNotesPageOpen && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'))
+        )
+      );
+
+      // In the Notes Editor, ONLY note-specific shortcuts and Esc apply - NEVER intercept with global app shortcuts!
+      if (isInsideNotesEditor && e.key !== 'Escape') {
+        return;
+      }
+
       const isTyping = target && (
         target.tagName === 'INPUT' || 
         target.tagName === 'TEXTAREA' || 
@@ -3009,12 +3309,19 @@ export function App() {
         isChangePasswordOpen ||
         workspaceToDelete ||
         sectionToDelete ||
-        topicToDelete ||
-        isDetailsDrawerOpen
+        topicToDelete
       );
 
       // Escape: Close recycle bin, notes page, search page, shortcuts modal, goal/streak popovers if open
       if (e.key === 'Escape') {
+        if (isDetailsDrawerOpen) {
+          setIsDetailsDrawerOpen(false);
+          return;
+        }
+        if (isJobCircularsOpen) {
+          setIsJobCircularsOpen(false);
+          return;
+        }
         if (isTasksPageOpen) {
           setIsTasksPageOpen(false);
           return;
@@ -3049,31 +3356,47 @@ export function App() {
         }
       }
 
+      // Helper to close all full-page studios when navigating to workspace view
+      const closeAllFullPages = () => {
+        setIsRecycleBinOpen(false);
+        setIsNotesPageOpen(false);
+        setIsSearchPageOpen(false);
+        setIsAnalyticsPageOpen(false);
+        setIsTasksPageOpen(false);
+        setIsJobCircularsOpen(false);
+      };
+
       // 1. Search, Sidebar, Help Cheatsheet (Ctrl / Meta shortcuts)
       if ((e.metaKey || e.ctrlKey) && !e.altKey) {
-        if (e.key.toLowerCase() === 'k') {
+        const isK = e.code === 'KeyK' || e.key.toLowerCase() === 'k';
+        const isB = e.code === 'KeyB' || e.key.toLowerCase() === 'b';
+        const isSlash = e.code === 'Slash' || e.key === '/' || e.key === '?';
+
+        if (isK) {
           e.preventDefault();
           if (!isAnyModalActive || isSearchPageOpen) {
             setIsSearchPageOpen(prev => {
               const next = !prev;
               if (next) {
                 setIsTasksPageOpen(false);
+                setIsJobCircularsOpen(false);
                 setIsNotesPageOpen(false);
                 setIsAnalyticsPageOpen(false);
+                setIsRecycleBinOpen(false);
               }
               return next;
             });
           }
           return;
         }
-        if (e.key.toLowerCase() === 'b') {
+        if (isB) {
           e.preventDefault();
           if (!isAnyModalActive) {
             setSidebarCollapsed(prev => !prev);
           }
           return;
         }
-        if (e.key === '/') {
+        if (isSlash) {
           e.preventDefault();
           if (!isAnyModalActive || isShortcutsOpen) {
             setIsShortcutsOpen(prev => !prev);
@@ -3104,7 +3427,8 @@ export function App() {
         }
 
         // 2b. Alt + L (without shift): Stop & Log Study Time
-        if (!e.shiftKey && keyLower === 'l') {
+        const isKeyL = e.code === 'KeyL' || keyLower === 'l';
+        if (!e.shiftKey && isKeyL) {
           if (activeStudyTimer && !isTyping) {
             e.preventDefault();
             handleStopAndLogGlobalStudyTimer();
@@ -3112,19 +3436,115 @@ export function App() {
           }
         }
 
-        // If ANY modal or Topic Details Drawer is currently active, DO NOT trigger other modal openers or workspace switches!
-        if (isAnyModalActive || isTyping) {
+        // If typing in an input/textarea, do not trigger remaining Alt shortcuts
+        if (isTyping) {
           return;
         }
 
-        const isGlobalPageActive = Boolean(isRecycleBinOpen || isNotesPageOpen || isSearchPageOpen || isAnalyticsPageOpen);
+        // If a dialog modal is actively open, don't trigger topic/section creation modals
+        const isDialogModalActive = Boolean(
+          isNewWorkspaceOpen ||
+          editingWorkspaceId ||
+          isNewSectionOpen ||
+          editingSection ||
+          isNewTopicOpen ||
+          isSmartStudioOpen ||
+          editingTopicId ||
+          isSettingsOpen ||
+          isAuthModalOpen ||
+          isEditProfileOpen ||
+          isChangePasswordOpen ||
+          workspaceToDelete ||
+          sectionToDelete ||
+          topicToDelete
+        );
+
+        const isGlobalPageActive = Boolean(
+          isRecycleBinOpen || 
+          isNotesPageOpen || 
+          isSearchPageOpen || 
+          isAnalyticsPageOpen || 
+          isTasksPageOpen || 
+          isJobCircularsOpen
+        );
+
+        const isKeyW = e.code === 'KeyW' || keyLower === 'w';
+        const isKeyR = e.code === 'KeyR' || keyLower === 'r';
+        const isKeyS = e.code === 'KeyS' || keyLower === 's';
+        const isKeyT = e.code === 'KeyT' || keyLower === 't';
+        const isKeyM = e.code === 'KeyM' || keyLower === 'm';
+        const isKeyG = e.code === 'KeyG' || keyLower === 'g';
+
+        // 2g. Alt + W (without shift): New Workspace Modal
+        if (!e.shiftKey && isKeyW) {
+          e.preventDefault();
+          closeAllFullPages();
+          setNewWorkspaceName('');
+          setIsNewWorkspaceOpen(true);
+          return;
+        }
+
+        // 2h. Alt + Shift + W: Rename Active Workspace
+        if (e.shiftKey && isKeyW) {
+          if (activeWorkspace) {
+            e.preventDefault();
+            closeAllFullPages();
+            setEditingWorkspaceId(activeWorkspace.id);
+            setEditingWorkspaceName(activeWorkspace.name);
+            return;
+          }
+        }
+
+        // 2l. Alt + R: Toggle Recycle Bin View
+        if (!e.shiftKey && isKeyR) {
+          e.preventDefault();
+          setIsRecycleBinOpen(prev => {
+            const next = !prev;
+            if (next) {
+              setIsNotesPageOpen(false);
+              setIsSearchPageOpen(false);
+              setIsAnalyticsPageOpen(false);
+              setIsTasksPageOpen(false);
+              setIsJobCircularsOpen(false);
+            }
+            return next;
+          });
+          return;
+        }
+
+        // 2e. Alt + G (without shift): Toggle Today's Goal Popover
+        if (!e.shiftKey && isKeyG) {
+          e.preventDefault();
+          if (isGlobalPageActive) {
+            closeAllFullPages();
+            setIsGoalPopoverOpen(true);
+          } else {
+            setIsGoalPopoverOpen(prev => !prev);
+          }
+          return;
+        }
+
+        // 2f. Alt + Shift + G: Toggle Streak Consistency Dashboard
+        if (e.shiftKey && isKeyG) {
+          e.preventDefault();
+          if (isGlobalPageActive) {
+            closeAllFullPages();
+            setIsStreakPopoverOpen(true);
+          } else {
+            setIsStreakPopoverOpen(prev => !prev);
+          }
+          return;
+        }
 
         // 2c. Alt + S (without shift): Create Section Modal (Requires an active workspace view!)
-        if (!e.shiftKey && keyLower === 's') {
+        if (!e.shiftKey && isKeyS) {
           e.preventDefault();
           if (isGlobalPageActive || !activeWorkspaceId || workspaces.length === 0) {
-            showToast('Please open a workspace first to create sections 📁');
-            return;
+            closeAllFullPages();
+            if (!activeWorkspaceId || workspaces.length === 0) {
+              showToast('Please open a workspace first to create sections 📁');
+              return;
+            }
           }
           setNewSectionName('');
           setIsNewSectionOpen(true);
@@ -3132,53 +3552,25 @@ export function App() {
         }
 
         // 2d. Alt + Shift + S: Rename Active Section
-        if (e.shiftKey && keyLower === 's') {
-          if (!isGlobalPageActive && activeSection) {
+        if (e.shiftKey && isKeyS) {
+          if (activeSection) {
             e.preventDefault();
+            closeAllFullPages();
             setEditingSection(activeSection);
             setEditingSectionName(activeSection);
             return;
           }
         }
 
-        // 2e. Alt + G (without shift): Toggle Today's Goal Popover
-        if (!e.shiftKey && keyLower === 'g') {
-          e.preventDefault();
-          setIsGoalPopoverOpen(prev => !prev);
-          return;
-        }
-
-        // 2f. Alt + Shift + G: Toggle Streak Consistency Dashboard
-        if (e.shiftKey && keyLower === 'g') {
-          e.preventDefault();
-          setIsStreakPopoverOpen(prev => !prev);
-          return;
-        }
-
-        // 2g. Alt + W (without shift): New Workspace Modal
-        if (!e.shiftKey && keyLower === 'w') {
-          e.preventDefault();
-          setNewWorkspaceName('');
-          setIsNewWorkspaceOpen(true);
-          return;
-        }
-
-        // 2h. Alt + Shift + W: Rename Active Workspace
-        if (e.shiftKey && keyLower === 'w') {
-          if (!isGlobalPageActive && activeWorkspace) {
-            e.preventDefault();
-            setEditingWorkspaceId(activeWorkspace.id);
-            setEditingWorkspaceName(activeWorkspace.name);
-            return;
-          }
-        }
-
         // 2i. Alt + T (without shift): Create Single Topic Modal (Requires active workspace view!)
-        if (!e.shiftKey && keyLower === 't') {
+        if (!e.shiftKey && isKeyT) {
           e.preventDefault();
           if (isGlobalPageActive || !activeWorkspaceId || workspaces.length === 0) {
-            showToast('Please open a workspace first to add topics 📚');
-            return;
+            closeAllFullPages();
+            if (!activeWorkspaceId || workspaces.length === 0) {
+              showToast('Please open a workspace first to add topics 📚');
+              return;
+            }
           }
           setNewTopicTitle('');
           setIsNewTopicOpen(true);
@@ -3186,11 +3578,14 @@ export function App() {
         }
 
         // 2j. Alt + Shift + T: Smart Topic Studio (Visual Form - Requires active workspace view!)
-        if (e.shiftKey && keyLower === 't') {
+        if (e.shiftKey && isKeyT) {
           e.preventDefault();
           if (isGlobalPageActive || !activeWorkspaceId || workspaces.length === 0) {
-            showToast('Please open a workspace first to open Topic Studio 📚');
-            return;
+            closeAllFullPages();
+            if (!activeWorkspaceId || workspaces.length === 0) {
+              showToast('Please open a workspace first to open Topic Studio 📚');
+              return;
+            }
           }
           setSmartStudioInitialMode('visual');
           setIsSmartStudioOpen(true);
@@ -3198,69 +3593,77 @@ export function App() {
         }
 
         // 2k. Alt + Shift + M: Smart Topic Studio (Markdown Text Mode - Requires active workspace view!)
-        if (e.shiftKey && keyLower === 'm') {
+        if (e.shiftKey && isKeyM) {
           e.preventDefault();
           if (isGlobalPageActive || !activeWorkspaceId || workspaces.length === 0) {
-            showToast('Please open a workspace first to open Topic Studio 📚');
-            return;
+            closeAllFullPages();
+            if (!activeWorkspaceId || workspaces.length === 0) {
+              showToast('Please open a workspace first to open Topic Studio 📚');
+              return;
+            }
           }
           setSmartStudioInitialMode('markdown');
           setIsSmartStudioOpen(true);
           return;
         }
 
-        // 2l. Alt + R: Toggle Recycle Bin View
-        if (!e.shiftKey && keyLower === 'r') {
-          e.preventDefault();
-          setIsRecycleBinOpen(prev => !prev);
-          return;
+        // 2m. Alt + 1..9, Alt + 0: Switch directly to 1st..10th Workspace
+        let digitIndex = -1;
+        if (e.code.startsWith('Digit')) {
+          const d = parseInt(e.code.replace('Digit', ''), 10);
+          if (!isNaN(d)) digitIndex = d === 0 ? 9 : d - 1;
+        } else if (e.code.startsWith('Numpad')) {
+          const d = parseInt(e.code.replace('Numpad', ''), 10);
+          if (!isNaN(d)) digitIndex = d === 0 ? 9 : d - 1;
+        } else if (/^[0-9]$/.test(e.key)) {
+          const d = parseInt(e.key, 10);
+          digitIndex = d === 0 ? 9 : d - 1;
         }
 
-        // 2m. Alt + 1..9, Alt + 0: Switch directly to 1st..10th Workspace
-        if (!e.shiftKey && /^[0-9]$/.test(e.key)) {
-          const num = parseInt(e.key, 10);
-          const targetIndex = num === 0 ? 9 : num - 1;
+        if (!e.shiftKey && digitIndex >= 0) {
           const list = sortedWorkspaces.length > 0 ? sortedWorkspaces : workspaces;
-          if (list[targetIndex]) {
+          if (list[digitIndex]) {
             e.preventDefault();
-            setActiveWorkspaceId(list[targetIndex].id);
-            if (isRecycleBinOpen) setIsRecycleBinOpen(false);
-            if (isNotesPageOpen) setIsNotesPageOpen(false);
-            if (isAnalyticsPageOpen) setIsAnalyticsPageOpen(false);
+            setActiveWorkspaceId(list[digitIndex].id);
+            closeAllFullPages();
             return;
           }
         }
 
         // 2n. Alt + ] or Alt + ArrowDown: Next Workspace
-        if (e.key === ']' || e.key === 'ArrowDown') {
+        const isNextWs = e.code === 'BracketRight' || e.key === ']' || e.code === 'ArrowDown' || e.key === 'ArrowDown';
+        if (isNextWs) {
           const list = sortedWorkspaces.length > 0 ? sortedWorkspaces : workspaces;
           if (list.length > 0) {
             e.preventDefault();
             const currIdx = list.findIndex(w => w.id === activeWorkspaceId);
             const nextIdx = currIdx === -1 ? 0 : (currIdx + 1) % list.length;
             setActiveWorkspaceId(list[nextIdx].id);
-            if (isRecycleBinOpen) setIsRecycleBinOpen(false);
+            closeAllFullPages();
             return;
           }
         }
 
         // 2o. Alt + [ or Alt + ArrowUp: Previous Workspace
-        if (e.key === '[' || e.key === 'ArrowUp') {
+        const isPrevWs = e.code === 'BracketLeft' || e.key === '[' || e.code === 'ArrowUp' || e.key === 'ArrowUp';
+        if (isPrevWs) {
           const list = sortedWorkspaces.length > 0 ? sortedWorkspaces : workspaces;
           if (list.length > 0) {
             e.preventDefault();
             const currIdx = list.findIndex(w => w.id === activeWorkspaceId);
             const prevIdx = currIdx === -1 ? 0 : (currIdx - 1 + list.length) % list.length;
             setActiveWorkspaceId(list[prevIdx].id);
-            if (isRecycleBinOpen) setIsRecycleBinOpen(false);
+            closeAllFullPages();
             return;
           }
         }
 
         // 2p. Alt + ArrowRight: Next Section
-        if (e.key === 'ArrowRight') {
+        const isNextSec = e.code === 'ArrowRight' || e.key === 'ArrowRight';
+        if (isNextSec) {
           if (currentWorkspaceSections.length > 0) {
             e.preventDefault();
+            closeAllFullPages();
             const secNames = currentWorkspaceSections.map(s => s.name);
             const currIdx = activeSection ? secNames.indexOf(activeSection) : -1;
             const nextIdx = (currIdx + 1) % secNames.length;
@@ -3270,9 +3673,11 @@ export function App() {
         }
 
         // 2q. Alt + ArrowLeft: Previous Section
-        if (e.key === 'ArrowLeft') {
+        const isPrevSec = e.code === 'ArrowLeft' || e.key === 'ArrowLeft';
+        if (isPrevSec) {
           if (currentWorkspaceSections.length > 0) {
             e.preventDefault();
+            closeAllFullPages();
             const secNames = currentWorkspaceSections.map(s => s.name);
             const currIdx = activeSection ? secNames.indexOf(activeSection) : 0;
             const prevIdx = (currIdx - 1 + secNames.length) % secNames.length;
@@ -3283,12 +3688,15 @@ export function App() {
       }
     };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
   }, [
     isSearchPageOpen,
     isNotesPageOpen,
     isAnalyticsPageOpen,
+    isTasksPageOpen,
+    isJobCircularsOpen,
+    isRecycleBinOpen,
     isShortcutsOpen,
     isGoalPopoverOpen,
     isStreakPopoverOpen,
@@ -3296,11 +3704,27 @@ export function App() {
     activeWorkspace,
     activeWorkspaceId,
     workspaces,
+    sortedWorkspaces,
     activeSection,
     currentWorkspaceSections,
     handleResumeGlobalStudyTimer,
     handlePauseGlobalStudyTimer,
-    handleStopAndLogGlobalStudyTimer
+    handleStopAndLogGlobalStudyTimer,
+    isNewWorkspaceOpen,
+    editingWorkspaceId,
+    isNewSectionOpen,
+    editingSection,
+    isNewTopicOpen,
+    isSmartStudioOpen,
+    editingTopicId,
+    isSettingsOpen,
+    isAuthModalOpen,
+    isEditProfileOpen,
+    isChangePasswordOpen,
+    workspaceToDelete,
+    sectionToDelete,
+    topicToDelete,
+    isDetailsDrawerOpen
   ]);
 
   // --- Full-Page Global Search Indexing Engine ---
@@ -5297,7 +5721,54 @@ export function App() {
     setDeletedTasks([]);
     setDeletedTopicNotes([]);
     setDeletedTopicLinks([]);
+    setDeletedJobCirculars([]);
     showToast(`Recycle bin emptied`);
+  };
+
+  // --- Job Circular Handlers ---
+  const handleAddJobCircular = (item: Omit<JobCircularItem, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newItem: JobCircularItem = {
+      ...item,
+      id: `circular-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setJobCirculars(prev => [newItem, ...prev]);
+    showToast(`Circular "${newItem.jobTitle}" added!`);
+  };
+
+  const handleUpdateJobCircular = (id: string, updates: Partial<JobCircularItem>) => {
+    setJobCirculars(prev =>
+      prev.map(c => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c))
+    );
+    showToast('Job circular updated!');
+  };
+
+  const handleDeleteJobCircularToTrash = (item: JobCircularItem) => {
+    setJobCirculars(prev => prev.filter(c => c.id !== item.id));
+    const deletedEntry: DeletedJobCircularItem = {
+      circular: item,
+      deletedAt: new Date().toISOString(),
+    };
+    setDeletedJobCirculars(prev => [deletedEntry, ...prev]);
+    showToast(`Moved "${item.jobTitle}" to Recycle Bin`);
+  };
+
+  const handleRestoreJobCircular = (circularId: string) => {
+    const target = deletedJobCirculars.find(entry => entry.circular.id === circularId);
+    if (target) {
+      setDeletedJobCirculars(prev => prev.filter(entry => entry.circular.id !== circularId));
+      setJobCirculars(prev => [target.circular, ...prev]);
+      showToast(`Restored "${target.circular.jobTitle}"`);
+    }
+  };
+
+  const handlePermanentDeleteJobCircular = (circularId: string) => {
+    if (userSettings.soundEffects !== false) {
+      soundManager.playTrash();
+    }
+    setDeletedJobCirculars(prev => prev.filter(entry => entry.circular.id !== circularId));
+    showToast('Job circular permanently deleted');
   };
 
   const handleAddTask = (topicId: string, titleParam?: string) => {
@@ -5850,7 +6321,9 @@ export function App() {
         deletedSections,
         deletedTasks,
         deletedTopicNotes,
-        deletedTopicLinks
+        deletedTopicLinks,
+        jobCirculars,
+        deletedJobCirculars
       };
       const jsonString = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
@@ -5915,14 +6388,17 @@ export function App() {
         const importedDeletedTasks = Array.isArray(parsed.deletedTasks) ? parsed.deletedTasks : [];
         const importedDeletedTopicNotes = Array.isArray(parsed.deletedTopicNotes) ? parsed.deletedTopicNotes : [];
         const importedDeletedTopicLinks = Array.isArray(parsed.deletedTopicLinks) ? parsed.deletedTopicLinks : [];
+        const importedJobCirculars: JobCircularItem[] = Array.isArray(parsed.jobCirculars) ? parsed.jobCirculars : [];
+        const importedDeletedJobCirculars: DeletedJobCircularItem[] = Array.isArray(parsed.deletedJobCirculars) ? parsed.deletedJobCirculars : [];
 
         if (
           importedTopics.length === 0 &&
           importedWorkspaces.length === 0 &&
           importedNotes.length === 0 &&
-          importedStandaloneTasks.length === 0
+          importedStandaloneTasks.length === 0 &&
+          importedJobCirculars.length === 0
         ) {
-          throw new Error('No valid topics, workspaces, notes, or tasks found in backup file.');
+          throw new Error('No valid topics, workspaces, notes, tasks, or circulars found in backup file.');
         }
 
         // 1. Ensure at least one Workspace exists
@@ -5984,6 +6460,16 @@ export function App() {
           localStorage.setItem('studyflow_notes', JSON.stringify(importedNotes));
         }
 
+        if (Array.isArray(parsed.jobCirculars)) {
+          setJobCirculars(importedJobCirculars);
+          localStorage.setItem('studyflow_job_circulars', JSON.stringify(importedJobCirculars));
+        }
+
+        if (Array.isArray(parsed.deletedJobCirculars)) {
+          setDeletedJobCirculars(importedDeletedJobCirculars);
+          localStorage.setItem('studyflow_deleted_job_circulars', JSON.stringify(importedDeletedJobCirculars));
+        }
+
         if (Array.isArray(parsed.standaloneTasks) || Array.isArray(parsed.dailyTasks) || Array.isArray(parsed.tasksStudio)) {
           setStandaloneTasks(importedStandaloneTasks);
           localStorage.setItem('studyflow_standalone_tasks', JSON.stringify(importedStandaloneTasks));
@@ -6039,6 +6525,35 @@ export function App() {
     reader.readAsText(file);
   };
 
+  // Landing page accent preview handoff to auth modal & new signup
+  const [authModalAccent, setAuthModalAccent] = useState<PrimaryAccentColor>('blue');
+
+  const handleOpenAuthWithAccent = (accentId?: string) => {
+    const validAccents: PrimaryAccentColor[] = ['blue', 'purple', 'green', 'orange', 'pink', 'cyan', 'amber'];
+    const targetAccent = validAccents.includes(accentId as PrimaryAccentColor) ? (accentId as PrimaryAccentColor) : 'blue';
+    setAuthModalAccent(targetAccent);
+
+    // 0ms Pre-Apply: Synchronously update DOM, LocalStorage & userSettings React state
+    // so that when login succeeds, Dashboard mounts with the exact target accent without any 1-frame race condition!
+    try {
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-accent', targetAccent);
+      }
+      applyAccentColor(targetAccent);
+      const saved = localStorage.getItem('studyflow_user_settings');
+      const parsed = saved ? JSON.parse(saved) : {};
+      parsed.primaryColor = targetAccent;
+      localStorage.setItem('studyflow_user_settings', JSON.stringify(parsed));
+    } catch (_) {}
+
+    setUserSettings((prev) => ({
+      ...prev,
+      primaryColor: targetAccent,
+    }));
+
+    setIsAuthModalOpen(true);
+  };
+
   // 1. Unauthenticated Visitor Landing Page & Auth Modal (Instant 0ms Load, Zero Splash)
   if (!currentUser) {
     return (
@@ -6046,64 +6561,70 @@ export function App() {
         <LandingPage
           userSettings={userSettings}
           onToggleTheme={handleToggleThemeMode}
-          onGetStarted={() => setIsAuthModalOpen(true)}
-          onSignIn={() => setIsAuthModalOpen(true)}
+          onGetStarted={handleOpenAuthWithAccent}
+          onSignIn={handleOpenAuthWithAccent}
+          onAccentChange={(accentId) => {
+            const validAccents: PrimaryAccentColor[] = ['blue', 'purple', 'green', 'orange', 'pink', 'cyan', 'amber'];
+            const targetAccent = validAccents.includes(accentId as PrimaryAccentColor) ? (accentId as PrimaryAccentColor) : 'blue';
+            setAuthModalAccent(targetAccent);
+            setUserSettings(prev => ({ ...prev, primaryColor: targetAccent }));
+          }}
         />
         <AuthModal
           isOpen={isAuthModalOpen}
           isClosable={true}
+          accentColor={authModalAccent}
           onClose={() => setIsAuthModalOpen(false)}
-          onSuccess={(user) => {
+          onSuccess={(user, preloadedCloudData) => {
+            // Atomic State Hydration: If cloud data was pre-fetched, apply it immediately
+            // so that the Dashboard renders with the user's actual Workspaces and Accent Color on the very first frame!
+            if (preloadedCloudData) {
+              isCloudApplyingRef.current = true;
+              if (preloadedCloudData.workspaces) setWorkspaces(preloadedCloudData.workspaces);
+              if (preloadedCloudData.workspaceSections) setWorkspaceSections(preloadedCloudData.workspaceSections);
+              if (preloadedCloudData.activeWorkspaceId) setActiveWorkspaceId(preloadedCloudData.activeWorkspaceId);
+              if (preloadedCloudData.topics) setTopics(preloadedCloudData.topics);
+              if (preloadedCloudData.deletedTopics) setDeletedTopics(preloadedCloudData.deletedTopics);
+              if (preloadedCloudData.deletedWorkspaces) setDeletedWorkspaces(preloadedCloudData.deletedWorkspaces);
+              if (preloadedCloudData.deletedNotes) setDeletedNotes(preloadedCloudData.deletedNotes);
+              if (preloadedCloudData.deletedSections) setDeletedSections(preloadedCloudData.deletedSections);
+              if (preloadedCloudData.deletedTasks) setDeletedTasks(preloadedCloudData.deletedTasks);
+              if (preloadedCloudData.deletedTopicNotes) setDeletedTopicNotes(preloadedCloudData.deletedTopicNotes);
+              if (preloadedCloudData.deletedTopicLinks) setDeletedTopicLinks(preloadedCloudData.deletedTopicLinks);
+              if (preloadedCloudData.notes) setNotes(preloadedCloudData.notes);
+              if (preloadedCloudData.standaloneTasks) setStandaloneTasks(preloadedCloudData.standaloneTasks);
+              if (preloadedCloudData.userSettings) {
+                const { theme: _cloudTheme, primaryColor: _cloudPrimaryColor, ...restCloudSettings } = preloadedCloudData.userSettings as any;
+                const finalAccent = getInitialAccentColor();
+                try {
+                  if (typeof document !== 'undefined') {
+                    document.documentElement.setAttribute('data-accent', finalAccent);
+                  }
+                  applyAccentColor(finalAccent);
+                } catch (_) {}
+                setUserSettings((prev: any) => ({
+                  ...prev,
+                  ...restCloudSettings,
+                  primaryColor: finalAccent
+                }));
+              }
+              isInitialSyncCompleteRef.current = true;
+              setTimeout(() => {
+                isCloudApplyingRef.current = false;
+              }, 400);
+            }
+
             setIsAuthModalOpen(false);
             const rawName = user?.displayName || (user?.email ? user.email.split('@')[0] : '');
             const displayName = rawName ? ` ${rawName}` : '';
             setToastData({ message: `Welcome${displayName} to Study Flow 🚀` });
           }}
         />
-        {/* Toast Notification Stack */}
-        <div className="fixed bottom-6 right-4 sm:right-6 z-[999999999] pointer-events-none select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] flex flex-col items-end gap-2">
-          <AnimatePresence mode="popLayout">
-            {toasts.map((toast) => (
-              <motion.div
-                layout
-                key={toast.id}
-                initial={{ opacity: 0, y: 28, scale: 0.94 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -16, scale: 0.92, transition: { duration: 0.2 } }}
-                transition={{
-                  layout: { type: 'spring', stiffness: 380, damping: 28, mass: 0.8 },
-                  opacity: { duration: 0.2 },
-                  y: { type: 'spring', stiffness: 380, damping: 28 },
-                  scale: { duration: 0.2 },
-                }}
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.7}
-                onDragEnd={(_, info) => {
-                  if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
-                    setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-                  }
-                }}
-                whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
-                className="pointer-events-auto cursor-grab active:cursor-grabbing touch-pan-y w-full flex justify-end"
-              >
-                <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 text-xs font-semibold tracking-tight min-w-[280px]">
-                  <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
-                    <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                  </div>
-                  <span className="flex-1 text-slate-100 leading-snug">{toast.message}</span>
-                  <button
-                    type="button"
-                    onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-                    className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+        {/* Unified Toast Notification Stack */}
+        <ToastContainer
+          toasts={toasts}
+          onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+        />
       </div>
     );
   }
@@ -6137,6 +6658,9 @@ export function App() {
         setIsRecycleBinOpen={setIsRecycleBinOpen}
         isAnalyticsPageOpen={isAnalyticsPageOpen}
         setIsAnalyticsPageOpen={setIsAnalyticsPageOpen}
+        isJobCircularsOpen={isJobCircularsOpen}
+        setIsJobCircularsOpen={setIsJobCircularsOpen}
+        jobCirculars={jobCirculars}
         notes={notes}
         standaloneTasks={standaloneTasks}
         showToast={showToast}
@@ -6204,6 +6728,11 @@ export function App() {
             </div>
 
             <AnimatePresence mode="wait" initial={false}>
+              <React.Suspense fallback={
+                <div className="flex-1 w-full h-full flex items-center justify-center bg-[#F8FAFC] dark:bg-[#090D16]">
+                  <Loader2 className="w-7 h-7 text-[#2563EB] animate-spin" />
+                </div>
+              }>
               {isSearchPageOpen ? (
                 <SearchView
                   workspaces={workspaces}
@@ -6243,6 +6772,25 @@ export function App() {
               onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
               soundEnabled={userSettings.soundEffects !== false}
             />
+          ) : isJobCircularsOpen ? (
+            <React.Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center min-h-[400px]">
+                  <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              }
+            >
+              <JobCircularStudio
+                circulars={jobCirculars}
+                onAddCircular={handleAddJobCircular}
+                onUpdateCircular={handleUpdateJobCircular}
+                onDeleteCircular={handleDeleteJobCircularToTrash}
+                onClose={() => setIsJobCircularsOpen(false)}
+                onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
+                showToast={showToast}
+                soundEnabled={userSettings.soundEffects !== false}
+              />
+            </React.Suspense>
           ) : isRecycleBinOpen ? (
             <RecycleBinStudio
               deletedWorkspaces={deletedWorkspaces}
@@ -6252,6 +6800,7 @@ export function App() {
               deletedTasks={deletedTasks}
               deletedTopicNotes={deletedTopicNotes}
               deletedTopicLinks={deletedTopicLinks}
+              deletedJobCirculars={deletedJobCirculars}
               workspaces={workspaces}
               onRestoreWorkspace={handleRestoreWorkspace}
               onPermanentDeleteWorkspace={handlePermanentDeleteWorkspace}
@@ -6266,6 +6815,8 @@ export function App() {
               onRestoreTopicNote={handleRestoreDrawerNote}
               onPermanentDeleteTopicNote={handlePermanentDeleteDrawerNote}
               onRestoreTopicLink={handleRestoreDrawerLink}
+              onRestoreJobCircular={handleRestoreJobCircular}
+              onPermanentDeleteJobCircular={handlePermanentDeleteJobCircular}
               onEmptyRecycleBin={handleEmptyRecycleBin}
               onClose={() => setIsRecycleBinOpen(false)}
               onToggleSidebar={() => setSidebarCollapsed(prev => !prev)}
@@ -6333,6 +6884,34 @@ export function App() {
                 notifFilter={notifFilter}
                 setNotifFilter={setNotifFilter}
                 handleToggleDeviceNotifications={handleToggleDeviceNotifications}
+                onNotificationClick={(notif) => {
+                  setIsNotificationPanelOpen(false);
+                  if (notif.actionTarget?.type === 'circular') {
+                    setIsTasksPageOpen(false);
+                    setIsNotesPageOpen(false);
+                    setIsAnalyticsPageOpen(false);
+                    setIsRecycleBinOpen(false);
+                    setIsSearchPageOpen(false);
+                    setIsJobCircularsOpen(true);
+                  } else if (notif.actionTarget?.type === 'task') {
+                    setIsJobCircularsOpen(false);
+                    setIsNotesPageOpen(false);
+                    setIsAnalyticsPageOpen(false);
+                    setIsRecycleBinOpen(false);
+                    setIsSearchPageOpen(false);
+                    setIsTasksPageOpen(true);
+                  } else if (notif.actionTarget?.type === 'recycle') {
+                    setIsJobCircularsOpen(false);
+                    setIsTasksPageOpen(false);
+                    setIsNotesPageOpen(false);
+                    setIsAnalyticsPageOpen(false);
+                    setIsSearchPageOpen(false);
+                    setIsRecycleBinOpen(true);
+                  }
+                }}
+                onDismissNotification={(id) => {
+                  setNotifications((prev) => prev.filter((item) => item.id !== id));
+                }}
                 currentUser={currentUser}
                 profileMenuTarget={profileMenuTarget}
                 setProfileMenuTarget={setProfileMenuTarget}
@@ -6523,6 +7102,7 @@ export function App() {
           </div>
         </motion.div>
         )}
+            </React.Suspense>
           </AnimatePresence>
         </div>
 
@@ -6849,68 +7429,16 @@ export function App() {
         )}
       </AnimatePresence>
 
-      {/* --- GLOBAL APP TOAST NOTIFICATIONS STACK --- */}
-      <div
-        className={`fixed ${
+      {/* --- GLOBAL APP UNIFIED TOAST NOTIFICATIONS STACK --- */}
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+        bottomOffsetClass={
           Boolean(activeStudyTimer && !drawerActiveTaskState?.isTimeMenuOpen)
             ? 'bottom-[86px] sm:bottom-[90px]'
             : 'bottom-6'
-        } right-4 sm:right-6 z-[999999999] pointer-events-none select-none max-w-[calc(100vw-2rem)] sm:max-w-[420px] transition-[bottom] duration-300 ease-out flex flex-col items-end gap-2`}
-      >
-        <AnimatePresence mode="popLayout">
-          {toasts.map((toast) => (
-            <motion.div
-              layout
-              key={toast.id}
-              initial={{ opacity: 0, y: 28, scale: 0.94 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -16, scale: 0.92, transition: { duration: 0.2 } }}
-              transition={{
-                layout: { type: 'spring', stiffness: 380, damping: 28, mass: 0.8 },
-                opacity: { duration: 0.2 },
-                y: { type: 'spring', stiffness: 380, damping: 28 },
-                scale: { duration: 0.2 },
-              }}
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.7}
-              onDragEnd={(_, info) => {
-                if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 200) {
-                  setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-                }
-              }}
-              whileDrag={{ scale: 0.98, opacity: 0.8, cursor: 'grabbing' }}
-              className="pointer-events-auto cursor-grab active:cursor-grabbing touch-pan-y w-full flex justify-end"
-            >
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#0F172A]/95 dark:bg-[#0B0F19]/95 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-slate-700/70 dark:border-slate-800/80 text-xs font-semibold tracking-tight min-w-[280px] max-w-full">
-                <div className="w-6 h-6 rounded-full bg-[#2563EB] flex items-center justify-center shrink-0 text-white shadow-xs">
-                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <span className="flex-1 text-slate-100 leading-snug">{toast.message}</span>
-                {toast.undoAction && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      toast.undoAction?.();
-                      setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-                    }}
-                    className="px-3 py-1 text-xs font-bold text-white bg-[#176BFF] hover:bg-blue-600 active:scale-95 rounded-lg shadow-sm shadow-blue-500/25 transition-all cursor-pointer shrink-0"
-                  >
-                    Undo
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-                  className="p-1 hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+        }
+      />
     </div>
   );
 }

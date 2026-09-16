@@ -15,6 +15,8 @@ export interface StudyFlowCloudData {
   deletedTasks?: any[];
   deletedTopicNotes?: any[];
   deletedTopicLinks?: any[];
+  jobCirculars?: any[];
+  deletedJobCirculars?: any[];
   notes?: any[];
   standaloneTasks?: any[];
   userSettings?: UserSettings;
@@ -41,9 +43,33 @@ export const saveUserDataToCloud = async (userId: string, data: StudyFlowCloudDa
     const userDocRef = doc(db, 'users', userId, 'data', 'studyflow');
     const syncData = { ...data };
     if (syncData.userSettings) {
-      const { theme, ...restSettings } = syncData.userSettings as any;
+      const { theme, primaryColor, ...restSettings } = syncData.userSettings as any;
       syncData.userSettings = restSettings;
     }
+
+    // Strip out any large base64 data URLs from circular attachments to ensure we never hit Firestore 1MB document limit
+    if (syncData.jobCirculars && Array.isArray(syncData.jobCirculars)) {
+      syncData.jobCirculars = syncData.jobCirculars.map((c: any) => ({
+        ...c,
+        attachments: (c.attachments || []).map((att: any) => ({
+          ...att,
+          url: typeof att.url === 'string' && att.url.startsWith('data:') ? '' : att.url
+        }))
+      }));
+    }
+    if (syncData.deletedJobCirculars && Array.isArray(syncData.deletedJobCirculars)) {
+      syncData.deletedJobCirculars = syncData.deletedJobCirculars.map((d: any) => ({
+        ...d,
+        circular: {
+          ...d.circular,
+          attachments: (d.circular?.attachments || []).map((att: any) => ({
+            ...att,
+            url: typeof att.url === 'string' && att.url.startsWith('data:') ? '' : att.url
+          }))
+        }
+      }));
+    }
+
     const cleanSyncData = sanitizeForFirestore(syncData);
     await setDoc(userDocRef, {
       ...cleanSyncData,

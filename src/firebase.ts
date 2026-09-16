@@ -22,6 +22,7 @@ import {
   persistentMultipleTabManager,
   getFirestore
 } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -56,6 +57,7 @@ try {
 }
 
 export const db = firestoreDb;
+export const storage = getStorage(app);
 
 // Auth Helper Functions
 export const signInWithGoogle = async () => {

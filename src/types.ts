@@ -41,7 +41,59 @@ export interface StandaloneTask {
   completedAt?: string;
 }
 
-export type DeletedItemType = 'workspace' | 'section' | 'topic' | 'task';
+export type DeletedItemType = 'workspace' | 'section' | 'topic' | 'task' | 'circular';
+
+export type JobCategory = 'govt' | 'bank';
+export type JobStage = 'not_applied' | 'applied' | 'prelim' | 'written' | 'viva' | 'selected';
+
+export interface JobAttachment {
+  id: string;
+  type: 'circular' | 'applicant_copy' | 'admit_card' | 'other';
+  name: string;
+  url: string;
+  fileSize?: string;
+  status?: 'uploading' | 'ready' | 'error';
+  progress?: number;
+  uploadedAt?: number;
+}
+
+export interface JobCircularItem {
+  id: string;
+  category: JobCategory;
+  jobTitle: string;
+  organization: string;
+  grade?: string;
+  scale?: string;
+  jobType?: 'permanent' | 'contractual' | 'deputation' | 'others';
+  applicationDeadline: string; // YYYY-MM-DD
+  stage: JobStage;
+  
+  // Credentials
+  userId?: string;
+  password?: string;
+  rollNumber?: string;
+  
+  // Exam Details
+  examDate?: string; // YYYY-MM-DD
+  examTime?: string;
+  examVenue?: string;
+  
+  // Financial
+  applicationFee?: number;
+  isFeePaid?: boolean;
+  
+  // Attachments & Notes
+  attachments: JobAttachment[];
+  notes?: string;
+  
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DeletedJobCircularItem {
+  circular: JobCircularItem;
+  deletedAt?: string;
+}
 
 export interface RecycleItem {
   id: string;
@@ -55,6 +107,7 @@ export interface RecycleItem {
     section?: Section;
     topic?: Topic;
     task?: Task;
+    circular?: JobCircularItem;
     // Child items if restoring container
     sections?: Section[];
     topics?: Topic[];

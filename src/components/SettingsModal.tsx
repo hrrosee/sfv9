@@ -154,12 +154,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleAccentColorChange = (newAccent: PrimaryAccentColor) => {
     setPrimaryColor(newAccent);
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-accent', newAccent);
+    }
     applyAccentColor(newAccent);
   };
 
   const handleClose = () => {
     // Revert live preview if closed without saving
-    applyTheme(settings.theme || (settings.darkMode ? 'dark' : 'light'), settings.primaryColor || 'blue');
+    const savedAccent = settings.primaryColor || 'blue';
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-accent', savedAccent);
+    }
+    applyTheme(settings.theme || (settings.darkMode ? 'dark' : 'light'), savedAccent);
     onClose();
   };
 

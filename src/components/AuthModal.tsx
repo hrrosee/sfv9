@@ -20,17 +20,61 @@ import {
   registerWithEmail, 
   sendPasswordReset 
 } from '../firebase';
+import { fetchUserDataFromCloud } from '../utils/firestoreSync';
+
+import { PrimaryAccentColor } from '../utils/themeManager';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (user?: any) => void;
+  onSuccess?: (user?: any, preloadedCloudData?: any) => Promise<void> | void;
   isClosable?: boolean;
+  accentColor?: PrimaryAccentColor | string;
 }
 
 type AuthMode = 'signin' | 'signup' | 'forgot';
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess, isClosable = true }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  isClosable = true,
+  accentColor = 'blue'
+}) => {
+  const getAccentGradient = () => {
+    switch (accentColor) {
+      case 'green':
+        return 'from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20';
+      case 'purple':
+        return 'from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-500/20';
+      case 'orange':
+        return 'from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 shadow-rose-500/20';
+      case 'amber':
+        return 'from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 shadow-amber-500/20';
+      case 'pink':
+        return 'from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 shadow-pink-500/20';
+      case 'cyan':
+        return 'from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 shadow-cyan-500/20';
+      case 'blue':
+      default:
+        return 'from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] shadow-blue-500/20';
+    }
+  };
+
+  const getAccentTextColor = () => {
+    switch (accentColor) {
+      case 'green': return 'text-emerald-600 hover:text-emerald-700';
+      case 'purple': return 'text-purple-600 hover:text-purple-700';
+      case 'orange': return 'text-rose-600 hover:text-rose-700';
+      case 'amber': return 'text-amber-600 hover:text-amber-700';
+      case 'pink': return 'text-pink-600 hover:text-pink-700';
+      case 'cyan': return 'text-cyan-600 hover:text-cyan-700';
+      case 'blue':
+      default:
+        return 'text-blue-600 hover:text-blue-700';
+    }
+  };
+
   const [mode, setMode] = useState<AuthMode>('signin');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -77,6 +121,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     return err.replace(/^Firebase:\s*/, '').replace(/\(auth\/[^)]+\)\.?/, '').trim() || 'Authentication failed. Please try again.';
   };
 
+  const fetchCloudDataWithTimeout = async (uid: string, timeoutMs = 2500) => {
+    try {
+      const fetchPromise = fetchUserDataFromCloud(uid);
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+      return await Promise.race([fetchPromise, timeoutPromise]);
+    } catch {
+      return null;
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -87,7 +141,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         console.error('Google Sign-In Error:', error);
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        onSuccess?.(user);
+        // Pre-fetch cloud data while loading button is still spinning for 0ms layout/color shift
+        const preloadedCloudData = await fetchCloudDataWithTimeout(user.uid);
+        if (onSuccess) {
+          await onSuccess(user, preloadedCloudData);
+        }
         onClose();
       }
     } catch (err: any) {
@@ -135,12 +193,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
       setLoading(true);
       const { user, error } = await registerWithEmail(name.trim(), email.trim(), password);
-      setLoading(false);
 
       if (error) {
+        setLoading(false);
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        onSuccess?.(user);
+        if (onSuccess) {
+          await onSuccess(user, null);
+        }
+        setLoading(false);
         onClose();
       }
       return;
@@ -154,12 +215,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
       setLoading(true);
       const { user, error } = await loginWithEmail(email.trim(), password);
-      setLoading(false);
 
       if (error) {
+        setLoading(false);
         setErrorMessage(formatAuthError(error));
       } else if (user) {
-        onSuccess?.(user);
+        // Pre-fetch cloud data while button spinner is still active!
+        const preloadedCloudData = await fetchCloudDataWithTimeout(user.uid);
+        if (onSuccess) {
+          await onSuccess(user, preloadedCloudData);
+        }
+        setLoading(false);
         onClose();
       }
     }
@@ -412,7 +478,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <button
                 type="submit"
                 disabled={loading || googleLoading}
-                className="w-full h-10 mt-2 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-[0.99] transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`w-full h-10 mt-2 rounded-xl bg-gradient-to-r ${getAccentGradient()} text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -441,7 +507,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                       setSuccessMessage(null);
                       setMode('signup');
                     }}
-                    className="font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer ml-1"
+                    className={`font-bold ${getAccentTextColor()} hover:underline cursor-pointer ml-1`}
                   >
                     Sign up
                   </button>
@@ -457,7 +523,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                       setSuccessMessage(null);
                       setMode('signin');
                     }}
-                    className="font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer ml-1"
+                    className={`font-bold ${getAccentTextColor()} hover:underline cursor-pointer ml-1`}
                   >
                     Sign in
                   </button>
@@ -471,7 +537,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     setSuccessMessage(null);
                     setMode('signin');
                   }}
-                  className="font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className={`font-bold ${getAccentTextColor()} hover:underline cursor-pointer inline-flex items-center gap-1`}
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>Back to Sign in</span>

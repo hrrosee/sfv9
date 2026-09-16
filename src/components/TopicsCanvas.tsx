@@ -971,16 +971,16 @@ export function TopicsCanvas({
                                 opacity: { duration: 0.2 },
                                 y: { duration: 0.15 }
                               }}
-                              className={`bg-white dark:bg-slate-900 border rounded-[16px] overflow-visible flex flex-col justify-between group cursor-pointer relative shadow-sm ${
+                              className={`bg-white/70 dark:bg-[#090D16]/70 backdrop-blur-xl border border-slate-200/70 dark:border-white/[0.06] rounded-[16px] overflow-visible flex flex-col justify-between group cursor-pointer relative shadow-sm ${
                                 isPinAnimating
                                   ? 'border-[#2563EB] ring-2 ring-[#2563EB]/40 shadow-xl shadow-blue-500/20'
                                   : activeMenuTopicId === topic.id
-                                      ? 'border-[#E2E8F0] dark:border-slate-700 shadow-md'
+                                      ? 'shadow-md'
                                       : topic.isPinned
-                                        ? 'border-slate-200/90 dark:border-slate-700 shadow-2xs'
+                                        ? 'bg-slate-50/50 dark:bg-slate-900/50 shadow-2xs'
                                         : isAnyPinAnimating
-                                          ? 'border-[#E2E8F0] dark:border-slate-700'
-                                          : 'border-[#E2E8F0] dark:border-slate-700 hover:border-[#CBD5E1] dark:hover:border-slate-600 hover:shadow-md'
+                                          ? ''
+                                          : 'hover:border-slate-300 dark:hover:border-white/15 hover:shadow-md'
                               }`}
                             >
                               {/* Top Banner Header */}
@@ -1145,7 +1145,7 @@ export function TopicsCanvas({
                               </div>
 
                               {/* Requirement 4: Topic progress dependent on task count */}
-                              <div className="p-4 flex flex-col gap-3 bg-white rounded-b-[15px]">
+                              <div className="p-4 flex flex-col gap-3 bg-white/70 dark:bg-[#090D16]/70 backdrop-blur-xl border-t border-slate-200/70 dark:border-white/[0.06] rounded-b-[15px]">
                                 {/* Progress Bar */}
                                 <div className="flex flex-col gap-1.5">
                                   <div className="flex items-center justify-between text-xs">
@@ -1265,18 +1265,18 @@ export function TopicsCanvas({
                                 scale: { duration: 0.2 },
                                 y: { duration: 0.15 }
                               }}
-                              className={`bg-white dark:bg-slate-900 border rounded-[8px] overflow-visible relative ${
+                              className={`bg-white/70 dark:bg-[#090D16]/70 backdrop-blur-xl border border-slate-200/70 dark:border-white/[0.06] rounded-[8px] overflow-visible relative ${
                                 isPinAnimating
                                   ? 'border-[#2563EB] ring-2 ring-[#2563EB]/40 shadow-xl shadow-blue-500/20'
                                   : activeMenuTopicId === topic.id
-                                      ? 'border-[#E2E8F0] dark:border-slate-700 shadow-md'
+                                      ? 'shadow-md'
                                       : topic.isPinned
-                                        ? 'border-slate-200/90 dark:border-slate-700 shadow-2xs'
+                                        ? 'bg-slate-50/50 dark:bg-slate-900/50 shadow-2xs'
                                         : isSelected
-                                          ? 'border-[#E2E8F0] dark:border-slate-700'
+                                          ? ''
                                           : isAnyPinAnimating
-                                            ? 'border-[#E2E8F0] dark:border-slate-700 shadow-[0_2px_8px_rgba(15,23,42,0.02)]'
-                                            : 'border-[#E2E8F0] dark:border-slate-700 hover:border-[#CBD5E1] dark:hover:border-slate-600 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.05)]'
+                                            ? 'shadow-[0_2px_8px_rgba(15,23,42,0.02)]'
+                                            : 'hover:border-slate-300 dark:hover:border-white/15 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.05)]'
                               }`}
                             >
                             {/* Topic Accordion Header */}
@@ -1288,7 +1288,7 @@ export function TopicsCanvas({
                                   )
                                 );
                               }}
-                              className="px-5 h-[42px] flex items-center justify-between border-b border-[#E2E8F0] dark:border-slate-700 gap-3 bg-white dark:bg-slate-900 cursor-pointer select-none"
+                              className="px-5 h-[42px] flex items-center justify-between border-b border-slate-200/70 dark:border-white/[0.06] gap-3 bg-transparent cursor-pointer select-none"
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="relative shrink-0">

@@ -25,10 +25,11 @@ import {
   Moon,
   ChevronLeft,
   X,
+  Briefcase,
 } from 'lucide-react';
 import { UserProfilePopover } from './UserProfilePopover';
 import { UserAvatar } from './UserAvatar';
-import { WorkspaceItem, UserSettings, PrimaryAccentColor, StudyNote, TaskItem } from '../types';
+import { WorkspaceItem, UserSettings, PrimaryAccentColor, StudyNote, TaskItem, JobCircularItem } from '../types';
 import { resolveEffectiveTheme } from '../utils/themeManager';
 
 // Custom Reorder Workspaces SVG Icon
@@ -82,6 +83,9 @@ export interface AppSidebarProps {
   setIsRecycleBinOpen: (open: boolean) => void;
   isAnalyticsPageOpen: boolean;
   setIsAnalyticsPageOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+  isJobCircularsOpen?: boolean;
+  setIsJobCircularsOpen?: (open: boolean) => void;
+  jobCirculars?: JobCircularItem[];
   notes: StudyNote[];
   standaloneTasks: TaskItem[];
   showToast: (msg: string) => void;
@@ -154,6 +158,9 @@ export function AppSidebar({
   setIsRecycleBinOpen,
   isAnalyticsPageOpen,
   setIsAnalyticsPageOpen,
+  isJobCircularsOpen = false,
+  setIsJobCircularsOpen = () => {},
+  jobCirculars = [],
   notes,
   standaloneTasks,
   showToast,
@@ -237,7 +244,7 @@ export function AppSidebar({
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 32, stiffness: 380, mass: 0.75 }}
-              className="md:hidden fixed inset-y-0 left-0 w-[275px] max-w-[85vw] h-[100dvh] z-[99999] bg-white/85 dark:bg-[#090D16]/85 backdrop-blur-xl border-r border-slate-200/70 dark:border-white/[0.06] shadow-2xl shadow-slate-950/25 flex flex-col select-none font-sans"
+              className="md:hidden fixed inset-y-0 left-0 w-[275px] max-w-[85vw] h-[100dvh] z-[99999] bg-white/85 dark:bg-[#090D16]/85 backdrop-blur-[20px] border-r border-slate-200/70 dark:border-white/[0.06] shadow-2xl shadow-slate-950/25 flex flex-col select-none font-sans"
               style={{ height: '100dvh' }}
             >
               {/* Brand Header with Close Button (Exact 56px matching main header) */}
@@ -370,6 +377,7 @@ export function AppSidebar({
                       setIsSearchPageOpen(true);
                       setIsNotesPageOpen(false);
                       setIsTasksPageOpen(false);
+                      setIsJobCircularsOpen(false);
                       setIsRecycleBinOpen(false);
                       setIsAnalyticsPageOpen(false);
                       setSidebarCollapsed(true);
@@ -425,6 +433,7 @@ export function AppSidebar({
                     onClick={() => {
                       setIsNotesPageOpen(true);
                       setIsTasksPageOpen(false);
+                      setIsJobCircularsOpen(false);
                       setIsSearchPageOpen(false);
                       setIsRecycleBinOpen(false);
                       setIsAnalyticsPageOpen(false);
@@ -455,10 +464,10 @@ export function AppSidebar({
                     </div>
                     {notes.length > 0 && (
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
+                        className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
                           isNotesPageOpen
                             ? 'bg-white/20 border-white/30 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
+                            : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                         }`}
                       >
                         {notes.length}
@@ -472,6 +481,7 @@ export function AppSidebar({
                     onClick={() => {
                       setIsTasksPageOpen(true);
                       setIsNotesPageOpen(false);
+                      setIsJobCircularsOpen(false);
                       setIsSearchPageOpen(false);
                       setIsRecycleBinOpen(false);
                       setIsAnalyticsPageOpen(false);
@@ -502,13 +512,61 @@ export function AppSidebar({
                     </div>
                     {standaloneTasks.filter((t) => !t.completed).length > 0 && (
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
+                        className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
                           isTasksPageOpen
                             ? 'bg-white/20 border-white/30 text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
+                            : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                         }`}
                       >
                         {standaloneTasks.filter((t) => !t.completed).length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Mobile Circulars Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsJobCircularsOpen(true);
+                      setIsTasksPageOpen(false);
+                      setIsNotesPageOpen(false);
+                      setIsSearchPageOpen(false);
+                      setIsRecycleBinOpen(false);
+                      setIsAnalyticsPageOpen(false);
+                      setSidebarCollapsed(true);
+                    }}
+                    className={`w-full h-[32px] px-2 rounded-md flex items-center justify-between transition-colors cursor-pointer shrink-0 ${
+                      isJobCircularsOpen
+                        ? 'bg-[#2563EB] text-white shadow-sm shadow-blue-500/25'
+                        : 'text-[#334155] dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white font-medium'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Briefcase
+                        className={`w-[17px] h-[17px] shrink-0 ${
+                          isJobCircularsOpen ? 'text-white stroke-[2]' : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                        strokeWidth={1.75}
+                      />
+                      <span
+                        className={`truncate font-serif text-[13px] leading-tight ${
+                          isJobCircularsOpen
+                            ? 'font-semibold text-white'
+                            : 'font-medium text-[#334155] dark:text-slate-200'
+                        }`}
+                      >
+                        Circulars
+                      </span>
+                    </div>
+                    {jobCirculars.length > 0 && (
+                      <span
+                        className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
+                          isJobCircularsOpen
+                            ? 'bg-white/20 border-white/30 text-white'
+                            : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
+                        }`}
+                      >
+                        {jobCirculars.length}
                       </span>
                     )}
                   </button>
@@ -546,6 +604,7 @@ export function AppSidebar({
                     onClick={() => {
                       setIsAnalyticsPageOpen(true);
                       setIsTasksPageOpen(false);
+                      setIsJobCircularsOpen(false);
                       setIsSearchPageOpen(false);
                       setIsNotesPageOpen(false);
                       setIsRecycleBinOpen(false);
@@ -598,7 +657,7 @@ export function AppSidebar({
                     ) : (
                       <>
                         <span>Workspaces</span>
-                        <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full bg-slate-100/90 text-slate-500 border border-slate-200/50">
+                        <span className="text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60 leading-none">
                           {sortedWorkspaces.length}
                         </span>
                         <ChevronDown
@@ -768,6 +827,7 @@ export function AppSidebar({
                           !isSearchPageOpen &&
                           !isNotesPageOpen &&
                           !isTasksPageOpen &&
+                          !isJobCircularsOpen &&
                           !isRecycleBinOpen &&
                           !isAnalyticsPageOpen;
                         return (
@@ -786,6 +846,7 @@ export function AppSidebar({
                                 setIsSearchPageOpen(false);
                                 setIsNotesPageOpen(false);
                                 setIsTasksPageOpen(false);
+                                setIsJobCircularsOpen(false);
                                 setIsAnalyticsPageOpen(false);
                                 setIsRecycleBinOpen(false);
                                 setSidebarCollapsed(true);
@@ -846,7 +907,7 @@ export function AppSidebar({
               </div>
 
               {/* Section 3: Bottom Preferences & Profile (Fixed Footer) */}
-              <div className="px-2 pb-2 pt-1 flex flex-col gap-[2px] shrink-0 bg-white">
+              <div className="px-2 pb-2 pt-1 flex flex-col gap-[2px] shrink-0 bg-transparent border-t border-slate-200/70 dark:border-white/[0.06]">
                 <div className="px-2 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none">
                   Preferences
                 </div>
@@ -883,6 +944,7 @@ export function AppSidebar({
                   onClick={() => {
                     setIsRecycleBinOpen(true);
                     setIsTasksPageOpen(false);
+                    setIsJobCircularsOpen(false);
                     setIsNotesPageOpen(false);
                     setIsSearchPageOpen(false);
                     setIsAnalyticsPageOpen(false);
@@ -913,10 +975,10 @@ export function AppSidebar({
                   </div>
                   {totalDeletedCount > 0 && (
                     <span
-                      className={`px-1.5 py-0.5 rounded-[4px] text-[10px] font-bold ${
+                      className={`px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full text-[9.5px] font-semibold shrink-0 leading-none transition-colors border ${
                         isRecycleBinOpen
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80'
+                          ? 'bg-white/20 border-white/30 text-white'
+                          : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                       }`}
                     >
                       {totalDeletedCount}
@@ -1009,7 +1071,7 @@ export function AppSidebar({
 
       {/* Desktop Left Sidebar (255px / 56px) - Frosted Glass Aesthetic matching Header */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 select-none font-sans static z-20 border-r border-slate-200/70 dark:border-white/[0.06] bg-white/80 dark:bg-[#090D16]/80 backdrop-blur-xl h-[100vh] transition-[width] duration-280 ease-[cubic-bezier(0.2,0,0,1)] ${
+        className={`hidden md:flex flex-col shrink-0 select-none font-sans static z-20 border-r border-slate-200/70 dark:border-white/[0.06] bg-white/85 dark:bg-[#090D16]/85 backdrop-blur-[20px] h-[100vh] transition-[width] duration-280 ease-[cubic-bezier(0.2,0,0,1)] ${
           sidebarCollapsed ? 'w-[56px] overflow-hidden' : 'w-[255px]'
         }`}
         style={{ height: '100vh' }}
@@ -1187,6 +1249,7 @@ export function AppSidebar({
                   const next = typeof prev === 'function' ? (prev as any)(isSearchPageOpen) : !prev;
                   if (next) {
                     setIsTasksPageOpen(false);
+                    setIsJobCircularsOpen(false);
                     setIsNotesPageOpen(false);
                     setIsRecycleBinOpen(false);
                     setIsAnalyticsPageOpen(false);
@@ -1260,6 +1323,7 @@ export function AppSidebar({
               onClick={() => {
                 setIsNotesPageOpen(true);
                 setIsTasksPageOpen(false);
+                setIsJobCircularsOpen(false);
                 setIsSearchPageOpen(false);
                 setIsRecycleBinOpen(false);
                 setIsAnalyticsPageOpen(false);
@@ -1303,10 +1367,10 @@ export function AppSidebar({
               </span>
               {notes.length > 0 && !sidebarCollapsed && (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
+                  className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
                     isNotesPageOpen
                       ? 'bg-white/20 border-white/30 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
+                      : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                   }`}
                 >
                   {notes.length}
@@ -1319,6 +1383,7 @@ export function AppSidebar({
               onClick={() => {
                 setIsTasksPageOpen(true);
                 setIsNotesPageOpen(false);
+                setIsJobCircularsOpen(false);
                 setIsSearchPageOpen(false);
                 setIsRecycleBinOpen(false);
                 setIsAnalyticsPageOpen(false);
@@ -1362,13 +1427,73 @@ export function AppSidebar({
               </span>
               {standaloneTasks.filter((t) => !t.completed).length > 0 && !sidebarCollapsed && (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
+                  className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
                     isTasksPageOpen
                       ? 'bg-white/20 border-white/30 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
+                      : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                   }`}
                 >
                   {standaloneTasks.filter((t) => !t.completed).length}
+                </span>
+              )}
+            </button>
+
+            {/* Circulars View Button */}
+            <button
+              onClick={() => {
+                setIsJobCircularsOpen(true);
+                setIsTasksPageOpen(false);
+                setIsNotesPageOpen(false);
+                setIsSearchPageOpen(false);
+                setIsRecycleBinOpen(false);
+                setIsAnalyticsPageOpen(false);
+              }}
+              data-tooltip={sidebarCollapsed ? 'Job Circulars' : undefined}
+              data-tooltip-side="right"
+              className={`group w-full h-[32px] rounded-md flex items-center px-1.5 gap-1.5 ${
+                isJobCircularsOpen
+                  ? sidebarCollapsed
+                    ? ''
+                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
+                  : 'hover:bg-slate-200/75 dark:hover:bg-slate-800/80 text-[#334155] dark:text-slate-200'
+              } transition-all duration-150 cursor-pointer shrink-0`}
+            >
+              <div
+                className={`w-7 h-7 flex items-center justify-center shrink-0 transition-all duration-150 ${
+                  isJobCircularsOpen && sidebarCollapsed
+                    ? 'rounded-md bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-sm shadow-blue-500/25'
+                    : ''
+                }`}
+              >
+                <Briefcase
+                  className={`w-[17px] h-[17px] ${
+                    isJobCircularsOpen
+                      ? 'text-white stroke-[2]'
+                      : 'text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white'
+                  } transition-colors duration-150`}
+                  strokeWidth={1.75}
+                />
+              </div>
+              <span
+                className={`truncate leading-tight block font-serif text-[13px] ${
+                  isJobCircularsOpen
+                    ? 'text-white font-[600]'
+                    : 'font-[500] text-[#334155] dark:text-slate-200 group-hover:text-slate-950 dark:group-hover:text-white'
+                } whitespace-nowrap transition-all duration-150 ease-out flex-1 text-left ${
+                  sidebarCollapsed ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
+                }`}
+              >
+                Circulars
+              </span>
+              {jobCirculars.length > 0 && !sidebarCollapsed && (
+                <span
+                  className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
+                    isJobCircularsOpen
+                      ? 'bg-white/20 border-white/30 text-white'
+                      : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
+                  }`}
+                >
+                  {jobCirculars.length}
                 </span>
               )}
             </button>
@@ -1423,6 +1548,7 @@ export function AppSidebar({
                   const next = typeof prev === 'function' ? (prev as any)(isAnalyticsPageOpen) : !prev;
                   if (next) {
                     setIsTasksPageOpen(false);
+                    setIsJobCircularsOpen(false);
                     setIsSearchPageOpen(false);
                     setIsNotesPageOpen(false);
                     setIsRecycleBinOpen(false);
@@ -1491,7 +1617,10 @@ export function AppSidebar({
                 </span>
               ) : (
                 <>
-                  <span>Workspaces({sortedWorkspaces.length})</span>
+                  <span>Workspaces</span>
+                  <span className="text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60 leading-none">
+                    {sortedWorkspaces.length}
+                  </span>
                   <ChevronDown
                     className={`w-3.5 h-3.5 transition-transform duration-200 ${
                       isWorkspacesCollapsed ? '-rotate-90 text-slate-400' : 'rotate-0 text-slate-400 group-hover/ws-header:text-slate-600'
@@ -1651,6 +1780,7 @@ export function AppSidebar({
                     !isSearchPageOpen &&
                     !isNotesPageOpen &&
                     !isTasksPageOpen &&
+                    !isJobCircularsOpen &&
                     !isRecycleBinOpen &&
                     !isAnalyticsPageOpen;
                   const initialChar = getWorkspaceInitial(ws.name);
@@ -1687,6 +1817,7 @@ export function AppSidebar({
                           setIsSearchPageOpen(false);
                           setIsNotesPageOpen(false);
                           setIsTasksPageOpen(false);
+                          setIsJobCircularsOpen(false);
                           setIsAnalyticsPageOpen(false);
                           setIsRecycleBinOpen(false);
                         }}
@@ -1801,7 +1932,7 @@ export function AppSidebar({
         </div>
 
         {/* Section 3: Bottom Preferences & Data */}
-        <div className="px-2 pt-2 pb-1 flex flex-col gap-[2px] shrink-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <div className="px-2 pt-2 pb-1 flex flex-col gap-[2px] shrink-0 bg-transparent border-t border-slate-200/70 dark:border-white/[0.06]">
           <div
             className={`px-1.5 h-6 flex items-center text-[10.5px] font-bold text-slate-400 uppercase tracking-[0.08em] select-none overflow-hidden whitespace-nowrap transition-opacity duration-200 ${
               sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
@@ -1856,6 +1987,7 @@ export function AppSidebar({
             onClick={() => {
               setIsRecycleBinOpen(true);
               setIsTasksPageOpen(false);
+              setIsJobCircularsOpen(false);
               setIsNotesPageOpen(false);
               setIsSearchPageOpen(false);
               setIsAnalyticsPageOpen(false);
@@ -1897,10 +2029,10 @@ export function AppSidebar({
             </span>
             {totalDeletedCount > 0 && !sidebarCollapsed && (
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 min-w-[20px] h-[18px] flex items-center justify-center rounded-full border shrink-0 transition-colors ${
+                className={`text-[9.5px] font-semibold px-1 min-w-[17px] h-[15px] flex items-center justify-center rounded-full border shrink-0 leading-none transition-colors ${
                   isRecycleBinOpen
                     ? 'bg-white/20 border-white/30 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-700/80'
+                    : 'bg-slate-100/90 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200/60 dark:border-slate-700/60'
                 }`}
               >
                 {totalDeletedCount}
@@ -1910,7 +2042,7 @@ export function AppSidebar({
         </div>
 
         {/* Section 4: Minimalist User Profile + Settings Bottom Row */}
-        <div className="relative user-profile-dropdown-container px-2 pt-1 pb-2 flex flex-col shrink-0 bg-white dark:bg-slate-900">
+        <div className="relative user-profile-dropdown-container px-2 pt-1 pb-2 flex flex-col shrink-0 bg-transparent">
           {currentUser && (
             <UserProfilePopover
               isOpen={profileMenuTarget === 'sidebar'}
