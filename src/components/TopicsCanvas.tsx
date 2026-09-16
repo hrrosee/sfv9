@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Sparkles,
+  Sparkles, Bell,
   Plus,
   Target,
   Filter,
@@ -844,7 +844,7 @@ export function TopicsCanvas({
                               </div>
 
                               {/* Card Footer: 3 Standardized Status Indicators */}
-                              <div className="flex items-center justify-between text-xs font-semibold pt-1.5 border-t border-slate-100">
+                              <div className="flex items-center justify-between text-xs font-semibold pt-1.5 border-t border-slate-100 dark:border-white/[0.06]">
                                 {isCompleted ? (
                                   <div className="flex items-center gap-1.5 min-w-0">
                                     <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
@@ -1161,7 +1161,7 @@ export function TopicsCanvas({
                                     />
                                   </div>
                                        {/* Status & Completed Tasks */}
-                                <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/80 text-xs font-semibold">
+                                <div className="flex items-center justify-between pt-1.5 border-t border-slate-100/80 dark:border-white/[0.06] text-xs font-semibold">
                                   {isCompleted ? (
                                     <div className="flex items-center gap-1.5">
                                       <div className="w-4 h-4 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-2xs">
@@ -1226,16 +1226,15 @@ export function TopicsCanvas({
                     ) : (
                       <div className="w-full">
                         {/* List View Layer */}
-                        {/* --- LIST VIEW MODE (Accordion List) --- */}
+                        {/* --- COMPACT 2-COLUMN LIST VIEW --- */}
                         <div
-                          className={`space-y-2.5 ${isAnyPinAnimating ? 'pointer-events-none select-none' : ''}`}
+                          className={`grid grid-cols-1 md:grid-cols-2 gap-3 w-full min-w-0 ${isAnyPinAnimating ? "pointer-events-none select-none" : ""}`}
                         >
                         {displayTopics.map((topic, index) => {
                           const topicTasks = topic.tasks || [];
                           const totalTasks = topicTasks.length;
                           const completedTasks = topicTasks.filter(t => t.completed).length;
                           const percent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-                          const allDone = totalTasks > 0 && completedTasks === totalTasks;
                           const isSelected = currentTopic?.id === topic.id;
                           const isPinAnimating = animatingPinTopicId === topic.id;
                           const theme = getTopicTheme(topic);
@@ -1248,7 +1247,12 @@ export function TopicsCanvas({
                               layout
                               key={topic.id}
                               id={topic.id}
-                              onClick={() => setSelectedTopicId(topic.id)}
+                              onClick={() => {
+                                if (editingTopicId !== topic.id) {
+                                  setSelectedTopicId(topic.id);
+                                  setIsDetailsDrawerOpen(true);
+                                }
+                              }}
                               initial={false}
                               animate={{
                                 scale: isPinAnimating ? 1.015 : 1,
@@ -1256,142 +1260,72 @@ export function TopicsCanvas({
                               }}
                               whileHover={isAnyPinAnimating ? undefined : { y: -1 }}
                               transition={{
-                                layout: {
-                                  type: 'spring',
-                                  stiffness: 350,
-                                  damping: 28,
-                                  mass: 0.85
-                                },
+                                layout: { type: "spring", stiffness: 350, damping: 28, mass: 0.85 },
                                 scale: { duration: 0.2 },
                                 y: { duration: 0.15 }
                               }}
-                              className={`bg-white/70 dark:bg-[#090D16]/70 backdrop-blur-xl border border-slate-200/70 dark:border-white/[0.06] rounded-[8px] overflow-visible relative ${
+                              className={`h-[48px] px-3 flex items-center justify-between bg-white/70 dark:bg-[#090D16]/70 backdrop-blur-xl border border-slate-200/70 dark:border-white/[0.06] rounded-[10px] overflow-visible relative cursor-pointer ${
                                 isPinAnimating
-                                  ? 'border-[#2563EB] ring-2 ring-[#2563EB]/40 shadow-xl shadow-blue-500/20'
+                                  ? "border-[#2563EB] ring-2 ring-[#2563EB]/40 shadow-xl shadow-blue-500/20"
                                   : activeMenuTopicId === topic.id
-                                      ? 'shadow-md'
+                                      ? "shadow-md ring-1 ring-slate-200 dark:ring-slate-700"
                                       : topic.isPinned
-                                        ? 'bg-slate-50/50 dark:bg-slate-900/50 shadow-2xs'
+                                        ? "bg-slate-50/50 dark:bg-slate-900/50 shadow-2xs"
                                         : isSelected
-                                          ? ''
-                                          : isAnyPinAnimating
-                                            ? 'shadow-[0_2px_8px_rgba(15,23,42,0.02)]'
-                                            : 'hover:border-slate-300 dark:hover:border-white/15 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_6px_18px_rgba(15,23,42,0.05)]'
+                                          ? "border-[#2563EB]/50 bg-blue-50/30 dark:bg-blue-900/10"
+                                          : "hover:border-slate-300 dark:hover:border-white/15 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_4px_12px_rgba(15,23,42,0.04)]"
                               }`}
                             >
-                            {/* Topic Accordion Header */}
-                            <div
-                              onClick={() => {
-                                setTopics(prev =>
-                                  prev.map(t =>
-                                    t.id === topic.id ? { ...t, expanded: !t.expanded } : t
-                                  )
-                                );
-                              }}
-                              className="px-5 h-[42px] flex items-center justify-between border-b border-slate-200/70 dark:border-white/[0.06] gap-3 bg-transparent cursor-pointer select-none"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="relative shrink-0">
-                                  <div className={`w-6 h-6 rounded-md ${theme.cardIconBg} flex items-center justify-center text-white shadow-2xs`}>
-                                    {iconText ? (
-                                      <span className="text-white text-[10px] font-black font-serif leading-none">{iconText}</span>
-                                    ) : (
-                                      <IconComp className={`w-3 h-3 ${theme.cardIconColor} stroke-[2.2]`} />
-                                    )}
-                                  </div>
-
-                                  <AnimatePresence>
-                                    {topic.isPinned && (
-                                      <motion.div
-                                        initial={{ scale: 0, opacity: 0 }}
-                                        animate={{ scale: 1, opacity: 1 }}
-                                        exit={{ scale: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                                        className="absolute -top-1 -right-1 w-4 h-4 bg-white dark:bg-slate-900 rounded-full border-[1.5px] shadow-xs flex items-center justify-center z-10"
-                                        style={{ borderColor: theme.bg?.match(/\[(.*?)\]/)?.[1] || '#2563EB' }}
-                                        title="Pinned to top"
-                                      >
-                                        <Pin className={`w-2.5 h-2.5 ${theme.pinIconColor || 'text-[#2563EB] fill-[#2563EB]'} rotate-45`} />
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
+                              {/* Left Side: Icon, Title & Pin */}
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`relative shrink-0 w-8 h-8 rounded-lg ${theme.cardIconBg} flex items-center justify-center text-white shadow-xs preserve-color`}>
+                                  {iconText ? (
+                                    <span className="text-white text-[11px] font-black font-serif leading-none preserve-color">{iconText}</span>
+                                  ) : (
+                                    <IconComp className={`w-4 h-4 text-white stroke-[2.2] preserve-color`} />
+                                  )}
                                 </div>
-
-                                <span className="font-bold text-sm text-[#0F172A] dark:text-slate-100 truncate">
-                                  {topic.title}
-                                </span>
-
-                                {/* Progress Percentage Badge */}
-                                <span className="inline-flex items-center justify-center h-[22px] min-w-[40px] px-2.5 bg-gradient-to-r from-[#2563EB] to-[#3B82F6] text-white text-[11px] font-extrabold rounded-full ml-1 shadow-2xs leading-none text-center select-none">
-                                  {percent}%
-                                </span>
-
-                                {/* Mark All Checkbox & Label */}
-                                <label
-                                  className="flex items-center gap-2 text-xs font-semibold text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 cursor-pointer ml-4 select-none"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={allDone}
-                                    onChange={() => toggleMarkAllTopic(topic.id)}
-                                    className="w-4 h-4 border border-[#CBD5E1] dark:border-slate-600 rounded-[4px] accent-[#2563EB] cursor-pointer"
-                                  />
-                                  <span>Mark All</span>
-                                </label>
+                                
+                                <div className="flex flex-col min-w-0">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="font-bold text-sm text-[#0F172A] dark:text-slate-100 truncate">
+                                      {topic.title}
+                                    </span>
+                                    <AnimatePresence>
+                                      {topic.isPinned && (
+                                        <motion.div
+                                          initial={{ scale: 0, opacity: 0 }}
+                                          animate={{ scale: 1, opacity: 1 }}
+                                          exit={{ scale: 0, opacity: 0 }}
+                                          className="shrink-0"
+                                        >
+                                          <Pin className={`w-3 h-3 ${theme.pinIconColor || "text-[#2563EB] fill-[#2563EB]"} rotate-45 preserve-color`} />
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                </div>
                               </div>
 
-                              {/* Header Action Buttons matching screenshot */}
-                              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                <button
-                                  onClick={() => {
-                                    setAddingTaskTopicId(
-                                      addingTaskTopicId === topic.id ? null : topic.id
-                                    );
-                                  }}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Add Subtask"
-                                >
-                                  <Plus className="w-4 h-4" />
-                                </button>
+                              {/* Right Side: Percentage & 3-Dot Menu */}
+                              <div className="flex items-center gap-3 shrink-0 ml-3">
+                                {/* Percentage Badge */}
+                                <div className={`px-2 py-[3px] rounded-full text-[10px] font-extrabold shadow-2xs leading-tight select-none text-white preserve-color ${theme.cardIconBg}`}>
+                                  {percent}%
+                                </div>
 
-                                <button
-                                  onClick={() => {
-                                    setEditingTopicId(topic.id);
-                                    setEditingTopicTitle(topic.title);
-                                  }}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Edit Topic"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  onClick={() => moveTopicIndex(topic.id, 'up')}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Reorder Topic"
-                                >
-                                  <ArrowUpDown className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  onClick={() => showToast(`Notifications enabled for "${topic.title}"`)}
-                                  className="p-1.5 text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 rounded-[5px] transition-colors cursor-pointer"
-                                  title="Topic Notifications"
-                                >
-                                  <Bell className="w-4 h-4" />
-                                </button>
+                                {/* 3-Dot Menu Container */}
                                 <div className="relative topic-card-menu-container">
                                   <button
-                                     onClick={e => {
-                                       e.stopPropagation();
-                                       setActiveMenuTopicId(activeMenuTopicId === topic.id ? null : topic.id);
-                                     }}
-                                     className={`p-1.5 rounded-md text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 transition-colors cursor-pointer topic-card-menu-btn ${
-                                       activeMenuTopicId === topic.id ? 'bg-[#F1F5F9] dark:bg-slate-800 text-[#0F172A] dark:text-white' : ''
-                                     }`}
-                                     title="More Options"
-                                   >
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setActiveMenuTopicId(activeMenuTopicId === topic.id ? null : topic.id);
+                                    }}
+                                    className={`p-1.5 rounded-md text-[#475569] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-slate-800 transition-colors cursor-pointer topic-card-menu-btn ${
+                                      activeMenuTopicId === topic.id ? "bg-[#F1F5F9] dark:bg-slate-800 text-[#0F172A] dark:text-white" : ""
+                                    }`}
+                                    title="More Options"
+                                  >
                                     <MoreVertical className="w-4 h-4" />
                                   </button>
 
@@ -1401,11 +1335,11 @@ export function TopicsCanvas({
                                         initial={{ opacity: 0, scale: 0.95, y: -4 }}
                                         animate={{ opacity: 1, scale: 1, y: 0 }}
                                         exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                        transition={{ duration: 0.15, ease: 'easeOut' }}
+                                        transition={{ duration: 0.15, ease: "easeOut" }}
                                         onClick={e => e.stopPropagation()}
                                         className={`absolute right-0 ${
-                                          isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                                        } w-[190px] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-900/15 backdrop-blur-md rounded-xl p-1 z-[999] text-xs font-medium topic-card-menu text-slate-700 dark:text-slate-200 select-none`}
+                                          isNearBottom ? "bottom-full mb-1.5" : "top-full mt-1.5"
+                                        } w-[190px] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-900/15 dark:shadow-black/50 backdrop-blur-md rounded-xl p-1 z-[999] text-xs font-medium topic-card-menu text-slate-700 dark:text-slate-200 select-none`}
                                       >
                                         {/* Pin to top */}
                                         <button
@@ -1415,8 +1349,8 @@ export function TopicsCanvas({
                                           }}
                                           className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                                         >
-                                          <Pin className={`w-3.5 h-3.5 shrink-0 ${topic.isPinned ? 'fill-[#2563EB] text-[#2563EB]' : 'text-slate-500 dark:text-slate-400'}`} />
-                                          <span className="truncate">{topic.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
+                                          <Pin className={`w-3.5 h-3.5 shrink-0 ${topic.isPinned ? "fill-[#2563EB] text-[#2563EB]" : "text-slate-500 dark:text-slate-400"} preserve-color`} />
+                                          <span className="truncate">{topic.isPinned ? "Unpin from top" : "Pin to top"}</span>
                                         </button>
 
                                         {/* Rename */}
@@ -1432,12 +1366,26 @@ export function TopicsCanvas({
                                           <span className="truncate">Rename</span>
                                         </button>
 
+                                        {/* Customize Icon & Color */}
+                                        <button
+                                          onClick={() => {
+                                            setActiveMenuTopicId(null);
+                                            setCustomizingTopic(topic);
+                                            setCustomColorSelection(topic.customColor || "");
+                                            setCustomIconSelection(topic.customIcon || "");
+                                          }}
+                                          className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
+                                        >
+                                          <Palette className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                                          <span className="truncate">Customize Icon & Color</span>
+                                        </button>
+
                                         {/* Merge Topic */}
                                         <button
                                           onClick={() => {
                                             setActiveMenuTopicId(null);
                                             setMergeSourceTopic(topic);
-                                            setTargetTopicIdForMerge('');
+                                            setTargetTopicIdForMerge("");
                                           }}
                                           className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                                         >
@@ -1450,7 +1398,7 @@ export function TopicsCanvas({
                                           onClick={() => {
                                             setActiveMenuTopicId(null);
                                             setMoveSectionSourceTopic(topic);
-                                            setTargetSectionForMove('');
+                                            setTargetSectionForMove("");
                                           }}
                                           className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white"
                                         >
@@ -1488,224 +1436,6 @@ export function TopicsCanvas({
                                   </AnimatePresence>
                                 </div>
                               </div>
-                            </div>
-
-                            {/* Accordion Content Body */}
-                            <AnimatePresence>
-                              {topic.expanded && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="flex flex-col bg-white overflow-hidden"
-                                >
-                                  {/* Add Task Input Row */}
-                                  {addingTaskTopicId === topic.id && (
-                                    <div className="flex items-center gap-2 p-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                                      <input
-                                        type="search"
-                                        autoComplete="one-time-code"
-                                        autoCorrect="off"
-                                        autoCapitalize="off"
-                                        spellCheck={false}
-                                        aria-autocomplete="none"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                        data-bwignore="true"
-                                        value={newTaskTitle}
-                                        onChange={e => setNewTaskTitle(e.target.value)}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') handleAddTask(topic.id);
-                                        }}
-                                        placeholder="Subtask title..."
-                                        autoFocus
-                                        className="flex-1 text-xs bg-white border border-[#E2E8F0] px-3 py-1.5 rounded-[6px] focus:outline-hidden focus:border-[#2563EB] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAddTask(topic.id)}
-                                        className="px-3 py-1.5 bg-[#2563EB] text-white text-xs font-bold rounded-[6px] hover:bg-[#1D4ED8] cursor-pointer"
-                                      >
-                                        Add
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setAddingTaskTopicId(null)}
-                                        className="p-1.5 text-[#64748B] hover:bg-[#E2E8F0] rounded-[6px] cursor-pointer"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {/* Task Items List matching screenshot */}
-                                  {(topic.tasks || []).length === 0 ? (
-                                    <div className="py-6 text-center text-xs text-[#94A3B8]">
-                                      No subtasks created yet. Click "+" to add one.
-                                    </div>
-                                  ) : (
-                                    (topic.tasks || []).map(task => {
-                                      const isEditingThisTask = editingTaskId?.topicId === topic.id && editingTaskId?.taskId === task.id;
-                                      const isMenuOpenThisTask = activeMenuTaskId === `${topic.id}-${task.id}`;
-
-                                      return (
-                                        <div
-                                          key={task.id}
-                                          className={`group px-5 h-[40px] flex items-center justify-between border-b border-[#F1F5F9] last:border-b-0 hover:bg-[#FAFBFD] transition-colors relative ${
-                                            isMenuOpenThisTask ? 'z-[99999] bg-white' : 'z-0'
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-3">
-                                            <GripVertical className="w-4 h-4 text-[#94A3B8] cursor-grab shrink-0" />
-                                            <div
-                                              onClick={() => toggleTaskCompleted(topic.id, task.id)}
-                                              className="cursor-pointer shrink-0"
-                                            >
-                                              {task.completed ? (
-                                                <div className="w-4 h-4 bg-[#2563EB] rounded-[4px] flex items-center justify-center text-white">
-                                                  <Check className="w-3 h-3 stroke-[3]" />
-                                                </div>
-                                              ) : (
-                                                <div className="w-4 h-4 border border-[#CBD5E1] rounded-[4px] bg-white hover:border-[#2563EB]" />
-                                              )}
-                                            </div>
-
-                                            {/* Inline Task Rename or Static Title */}
-                                            {isEditingThisTask ? (
-                                              <div className="flex items-center gap-1.5 flex-1" onClick={e => e.stopPropagation()}>
-                                                <input
-                                                  type="text"
-                                                  value={editingTaskTitle}
-                                                  onChange={e => setEditingTaskTitle(e.target.value)}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
-                                                      e.preventDefault();
-                                                      handleSaveRenameTask(topic.id, task.id);
-                                                    } else if (e.key === 'Escape') {
-                                                      e.preventDefault();
-                                                      setEditingTaskId(null);
-                                                    }
-                                                  }}
-                                                  autoFocus
-                                                  className="flex-1 text-[13px] font-medium text-[#0F172A] bg-white border border-[#2563EB] rounded px-2 py-0.5 outline-none"
-                                                />
-                                                {/* Save Button */}
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={e => {
-                                                    e.preventDefault();
-                                                    handleSaveRenameTask(topic.id, task.id);
-                                                  }}
-                                                  className="text-[#2563EB] hover:text-[#1D4ED8] transition-colors shrink-0 cursor-pointer"
-                                                  title="Save (Enter)"
-                                                >
-                                                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                                </button>
-                                                {/* Cancel Button */}
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={e => {
-                                                    e.preventDefault();
-                                                    setEditingTaskId(null);
-                                                  }}
-                                                  className="text-slate-400 hover:text-slate-600 transition-colors shrink-0 cursor-pointer"
-                                                  title="Cancel (Esc)"
-                                                >
-                                                  <X className="w-3.5 h-3.5" />
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <span className="text-[13px] font-normal text-[#0F172A] truncate">
-                                                {task.title}
-                                              </span>
-                                            )}
-                                          </div>
-
-                                          {/* Task Metadata & Action matching screenshot */}
-                                          <div className="flex items-center shrink-0">
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569] mr-6">
-                                              <Calendar className="w-4 h-4 text-[#64748B]" />
-                                              <span>{task.date}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#475569] mr-6">
-                                              <Clock className="w-4 h-4 text-[#64748B]" />
-                                              <span>{task.time}</span>
-                                            </div>
-
-                                            {/* 3-Dot Dropdown Options */}
-                                            <div className={`relative ${isMenuOpenThisTask ? 'z-[99999]' : 'z-10'}`}>
-                                              <button
-                                                onClick={e => {
-                                                  e.stopPropagation();
-                                                  setActiveMenuTaskId(isMenuOpenThisTask ? null : `${topic.id}-${task.id}`);
-                                                }}
-                                                className={`p-1 rounded-[4px] transition-colors cursor-pointer task-item-menu-btn ${
-                                                  isMenuOpenThisTask ? 'bg-[#F1F5F9] text-[#0F172A]' : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9]'
-                                                }`}
-                                                title="Task options"
-                                              >
-                                                <MoreVertical className="w-4 h-4" />
-                                              </button>
-
-                                              <AnimatePresence>
-                                                {isMenuOpenThisTask && (
-                                                  <motion.div
-                                                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                    transition={{ duration: 0.12, ease: 'easeOut' }}
-                                                    onClick={e => e.stopPropagation()}
-                                                    className="absolute right-0 top-full mt-1 w-[185px] whitespace-nowrap bg-white border border-slate-200/90 shadow-2xl shadow-slate-900/20 backdrop-blur-md rounded-xl p-1 z-[999999] text-xs font-medium task-item-menu text-slate-700 select-none"
-                                                  >
-                                                    {/* 1. Rename */}
-                                                    <button
-                                                      onClick={() => handleStartRenameTask(topic.id, task)}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                                    >
-                                                      <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                                      <span className="truncate">Rename</span>
-                                                    </button>
-
-
-                                                    {/* 2. Edit (Placeholder) */}
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveMenuTaskId(null);
-                                                        showToast('Task details edit coming soon');
-                                                      }}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-slate-700 hover:bg-slate-100/80 hover:text-slate-900"
-                                                    >
-                                                      <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                                      <span className="truncate">Edit</span>
-                                                    </button>
-
-                                                    <div className="my-1 border-t border-slate-100" />
-
-                                                    {/* 3. Move to Recycle Bin */}
-                                                    <button
-                                                      onClick={() => {
-                                                        setActiveMenuTaskId(null);
-                                                        setTaskToDelete({ topicId: topic.id, task });
-                                                      }}
-                                                      className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-2 transition-colors cursor-pointer my-0.5 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                                    >
-                                                      <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                                      <span className="truncate">Move to Recycle Bin</span>
-                                                    </button>
-                                                  </motion.div>
-                                                )}
-                                              </AnimatePresence>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
                             </motion.div>
                           );
                         })}

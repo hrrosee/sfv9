@@ -1075,7 +1075,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-tight">Study Flow Pro</h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Version 4.2.0 (PWA Ready)</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Version 9.0 (PWA Ready)</p>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200/70 dark:border-emerald-800/50 mt-1.5">
                           <ShieldCheck className="w-3 h-3" /> {isInstalled ? 'App Installed & Offline Ready' : 'PWA & Offline Storage Active'}
                         </span>

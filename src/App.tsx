@@ -7094,7 +7094,7 @@ export function App() {
                 {/* Right: Version Pill */}
                 <div className="flex items-center text-[11px] font-semibold text-slate-500">
                   <span className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600">
-                    v4.0.0
+                    v9.0
                   </span>
                 </div>
               </footer>
