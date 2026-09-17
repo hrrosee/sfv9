@@ -1420,36 +1420,53 @@ export function App() {
     }
 
     const topicId = activeStudyTimer.topicId;
-    const targetTopic = topics.find(t => t.id === topicId);
-    if (targetTopic) {
+    let savedTaskTitle = '';
+    let savedSessionFormatted = '';
+
+    setTopics(prevTopics => {
+      const targetTopic = prevTopics.find(t => t.id === topicId);
+      if (!targetTopic) return prevTopics;
+
       const targetTask = (targetTopic.tasks || []).find(tk => tk.id === taskIdToLog);
-      if (targetTask) {
-        const previousTotalSeconds = targetTask.timeSpentSeconds ?? ((targetTask.timeSpentMinutes || 0) * 60);
-        const newTotalSeconds = previousTotalSeconds + sessionSeconds;
-        const newMinutes = Math.floor(newTotalSeconds / 60);
+      if (!targetTask) return prevTopics;
 
-        const newSession = {
-          id: `sess-${Date.now()}`,
-          timestamp: Date.now(),
-          durationSeconds: sessionSeconds,
-        };
+      const previousTotalSeconds = targetTask.timeSpentSeconds ?? ((targetTask.timeSpentMinutes || 0) * 60);
+      const newTotalSeconds = previousTotalSeconds + sessionSeconds;
+      const newMinutes = Math.floor(newTotalSeconds / 60);
 
-        handleUpdateTask(topicId, {
-          ...targetTask,
-          timeSpentSeconds: newTotalSeconds,
-          timeSpentMinutes: newMinutes,
-          studySessions: [...(targetTask.studySessions || []), newSession],
-          lastStudyDate: new Date().toISOString(),
-        });
+      const newSession = {
+        id: `sess-${Date.now()}`,
+        timestamp: Date.now(),
+        durationSeconds: sessionSeconds,
+      };
 
-        const sessionMins = Math.floor(sessionSeconds / 60);
-        const sessionSecs = sessionSeconds % 60;
-        const sessionFormatted = sessionMins > 0 
-          ? (sessionSecs > 0 ? `+${sessionMins}m ${sessionSecs}s` : `+${sessionMins}m`)
-          : `+${sessionSecs}s`;
+      const updatedTask = {
+        ...targetTask,
+        timeSpentSeconds: newTotalSeconds,
+        timeSpentMinutes: newMinutes,
+        studySessions: [...(targetTask.studySessions || []), newSession],
+        lastStudyDate: new Date().toISOString(),
+      };
 
-        showToast(`Study session saved for "${targetTask.title}"! ${sessionFormatted}`);
-      }
+      savedTaskTitle = targetTask.title;
+      const sessionMins = Math.floor(sessionSeconds / 60);
+      const sessionSecs = sessionSeconds % 60;
+      savedSessionFormatted = sessionMins > 0 
+        ? (sessionSecs > 0 ? `+${sessionMins}m ${sessionSecs}s` : `+${sessionMins}m`)
+        : `+${sessionSecs}s`;
+
+      return prevTopics.map(t =>
+        t.id === topicId
+          ? {
+              ...t,
+              tasks: t.tasks.map(tk => (tk.id === taskIdToLog ? updatedTask : tk)),
+            }
+          : t
+      );
+    });
+
+    if (savedTaskTitle) {
+      showToast(`Study session saved for "${savedTaskTitle}"! ${savedSessionFormatted}`);
     }
 
     timerStartTimeRef.current = null;

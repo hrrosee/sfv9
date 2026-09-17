@@ -1779,6 +1779,7 @@ export const TopicDetailsDrawer: React.FC<TopicDetailsDrawerProps> = ({
     if (topic && targetTask) {
       const previousTotalSeconds = targetTask.timeSpentSeconds ?? ((targetTask.timeSpentMinutes || 0) * 60);
       const newTotalSeconds = previousTotalSeconds + sessionSeconds;
+      const newMinutes = Math.floor(newTotalSeconds / 60);
       const newSession = {
         id: `sess-${Date.now()}`,
         timestamp: Date.now(),
