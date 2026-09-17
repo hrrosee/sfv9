@@ -1405,9 +1405,9 @@ export function App() {
     setIsGlobalStillStudyingOpen(false);
   };
 
-  const handleStopAndLogGlobalStudyTimer = (targetTaskId?: string) => {
+  const handleStopAndLogGlobalStudyTimer = (targetTaskId?: string | any) => {
     if (!activeStudyTimer) return;
-    const taskIdToLog = targetTaskId || activeStudyTimer.taskId;
+    const taskIdToLog = (typeof targetTaskId === 'string' ? targetTaskId : undefined) || activeStudyTimer.taskId;
 
     let sessionSeconds = activeStudyTimer.seconds;
     // If milestone prompt was active, log the exact milestone time (excluding grace period extra seconds)
