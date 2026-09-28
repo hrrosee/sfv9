@@ -2996,11 +2996,7 @@ export function App() {
           if (cloudData.workspaceSections) setWorkspaceSections(cloudData.workspaceSections);
           if (cloudData.activeWorkspaceId) setActiveWorkspaceId(cloudData.activeWorkspaceId);
           if (cloudData.topics) {
-            setTopics(prev => {
-              const cloudTopicIds = new Set((cloudData.topics || []).map((t: any) => t.id));
-              const localOnlyTopics = prev.filter(t => !cloudTopicIds.has(t.id));
-              return [...(cloudData.topics || []), ...localOnlyTopics];
-            });
+            setTopics(cloudData.topics);
           }
           if (cloudData.deletedTopics) setDeletedTopics(cloudData.deletedTopics);
           if (cloudData.deletedWorkspaces) setDeletedWorkspaces(cloudData.deletedWorkspaces);
@@ -3010,19 +3006,11 @@ export function App() {
           if (cloudData.deletedTopicNotes) setDeletedTopicNotes(cloudData.deletedTopicNotes);
           if (cloudData.deletedTopicLinks) setDeletedTopicLinks(cloudData.deletedTopicLinks);
           if (cloudData.jobCirculars) {
-            setJobCirculars(prev => {
-              const cloudCircularIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
-              const localOnly = prev.filter(c => !cloudCircularIds.has(c.id));
-              return [...(cloudData.jobCirculars || []), ...localOnly];
-            });
+            setJobCirculars(cloudData.jobCirculars);
           }
           if (cloudData.deletedJobCirculars) setDeletedJobCirculars(cloudData.deletedJobCirculars);
           if (cloudData.notes) {
-            setNotes(prev => {
-              const cloudNoteIds = new Set((cloudData.notes || []).map((n: any) => n.id));
-              const localOnlyNotes = prev.filter(n => !cloudNoteIds.has(n.id));
-              return [...(cloudData.notes || []), ...localOnlyNotes];
-            });
+            setNotes(cloudData.notes);
           }
           if (cloudData.standaloneTasks) {
             setStandaloneTasks(cloudData.standaloneTasks);
@@ -3086,11 +3074,7 @@ export function App() {
         }
         if (cloudData.workspaceSections) setWorkspaceSections(cloudData.workspaceSections);
         if (cloudData.topics) {
-          setTopics(prev => {
-            const cloudTopicIds = new Set((cloudData.topics || []).map((t: any) => t.id));
-            const localOnlyTopics = prev.filter(t => !cloudTopicIds.has(t.id));
-            return [...(cloudData.topics || []), ...localOnlyTopics];
-          });
+          setTopics(cloudData.topics);
         }
         if (cloudData.deletedTopics) setDeletedTopics(cloudData.deletedTopics);
         if (cloudData.deletedWorkspaces) setDeletedWorkspaces(cloudData.deletedWorkspaces);
@@ -3100,19 +3084,11 @@ export function App() {
         if (cloudData.deletedTopicNotes) setDeletedTopicNotes(cloudData.deletedTopicNotes);
         if (cloudData.deletedTopicLinks) setDeletedTopicLinks(cloudData.deletedTopicLinks);
         if (cloudData.jobCirculars) {
-          setJobCirculars(prev => {
-            const cloudCircularIds = new Set((cloudData.jobCirculars || []).map((c: any) => c.id));
-            const localOnly = prev.filter(c => !cloudCircularIds.has(c.id));
-            return [...(cloudData.jobCirculars || []), ...localOnly];
-          });
+          setJobCirculars(cloudData.jobCirculars);
         }
         if (cloudData.deletedJobCirculars) setDeletedJobCirculars(cloudData.deletedJobCirculars);
         if (cloudData.notes) {
-          setNotes(prev => {
-            const cloudNoteIds = new Set((cloudData.notes || []).map((n: any) => n.id));
-            const localOnlyNotes = prev.filter(n => !cloudNoteIds.has(n.id));
-            return [...(cloudData.notes || []), ...localOnlyNotes];
-          });
+          setNotes(cloudData.notes);
         }
         if (cloudData.standaloneTasks) {
           setStandaloneTasks(cloudData.standaloneTasks);
