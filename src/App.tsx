@@ -2961,11 +2961,29 @@ export function App() {
   const handleSignOut = async () => {
     setProfileMenuTarget(null);
     try {
-      localStorage.removeItem('studyflow_cached_user');
+      localStorage.clear();
     } catch {}
     await logoutUser();
+    
+    // Reset all states to initial default to prevent data leak across accounts
+    setWorkspaces([{ id: '1', name: 'Workspace' }]);
+    setWorkspaceSections([]);
+    setActiveWorkspaceId('1');
+    setTopics([]);
+    setDeletedTopics([]);
+    setDeletedWorkspaces([]);
+    setNotes([]);
+    setDeletedNotes([]);
+    setDeletedSections([]);
+    setDeletedTasks([]);
+    setDeletedTopicNotes([]);
+    setDeletedTopicLinks([]);
+    setJobCirculars([]);
+    setDeletedJobCirculars([]);
+    setStandaloneTasks([]);
+    
     setCurrentUser(null);
-    setToastData({ message: 'Signed out successfully.' });
+    setToastData({ message: 'Signed out successfully. Local data cleared for privacy.' });
   };
 
   // Flag to prevent loopback saving while applying cloud updates
