@@ -75,8 +75,11 @@ export const saveUserDataToCloud = async (userId: string, data: StudyFlowCloudDa
       ...cleanSyncData,
       updatedAt: serverTimestamp()
     }, { merge: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving data to Firestore:', error);
+    if (error?.message?.includes('payload') || error?.message?.includes('exceeded') || error?.code === 'resource-exhausted') {
+      window.alert('⚠️ ক্লাউডে আপনার ডেটা সেভ হতে ব্যর্থ হয়েছে! সম্ভবত আপনার নোটস বা টাস্কে থাকা ইমেজের কারণে ডেটার সাইজ লিমিট (১ এমবি) পার হয়ে গেছে।\n\nদয়া করে সেটিংস থেকে "Export" বাটনে ক্লিক করে ডেটার ব্যাকআপ নিয়ে রাখুন।');
+    }
   }
 };
 
